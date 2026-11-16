@@ -46,6 +46,13 @@ module.exports = {
   // Папка игры по умолчанию (на Windows). Можно сменить в настройках.
   DEFAULT_GAME_DIR_WIN: 'C:\\Games\\Meridian Online',
 
+  // Эталонный список файлов сборки для «Фикса игры».
+  GAME_FILES_URLS: [
+    `${RAW_BASE}/game/files.json`,
+    `${API_BASE}/game/files.json?ref=${REPO_BRANCH}`,
+    `${CDN_BASE}/game/files.json`,
+  ],
+
   // Discord Rich Presence. Application ID лучше задавать в content/launcher.json → discord.clientId
   // (тогда его можно сменить без выпуска лаунчера). Здесь — запасное значение.
   DISCORD_CLIENT_ID: '',
