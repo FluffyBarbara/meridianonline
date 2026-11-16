@@ -22,6 +22,10 @@ const DEFAULTS = {
   animatedBackground: true,
   // Показывать статус в Discord
   discordPresence: true,
+  // Безопасный запуск: временно отключать графические моды
+  safeMode: false,
+  // Что отключено безопасным запуском (чтобы вернуть после выхода из игры)
+  safeModeRenamed: null,
 };
 
 let cache = null;

@@ -2,7 +2,7 @@
 
 const path = require('path');
 const fs = require('fs');
-const { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu, nativeImage, clipboard } = require('electron');
 
 const log = require('electron-log/main');
 const config = require('./config');
@@ -14,6 +14,8 @@ const { queryServer } = require('./game/query');
 const { GameInstaller } = require('./game/installer');
 const { Prereqs } = require('./game/prereqs');
 const { GameFixer } = require('./game/fixer');
+const safeMode = require('./game/safemode');
+const diagnostics = require('./diagnostics');
 const { launchGame, isInstalled, isGameRunning, validateNickname } = require('./game/launch');
 
 const DEV = process.argv.includes('--dev');
@@ -255,6 +257,8 @@ function updatePresence() {
   discord.setActivity(activity);
 }
 
+let lastLaunch = null;
+
 // ───────────────────────── Слежение за игрой ─────────────────────────
 let watchTimer = null;
 function watchGame(manifest, server) {
@@ -278,7 +282,10 @@ function watchGame(manifest, server) {
       updatePresence();
       // Игра закрылась почти сразу — скорее всего вылет: подскажем «Фикс игры»
       const played = seen ? Math.round((Date.now() - seenAt) / 1000) : 0;
-      send('game:exited', { seconds: played, neverStarted: !seen });
+      if (lastLaunch) Object.assign(lastLaunch, { playedSeconds: played, processSeen: seen });
+      log.info(`[launch] игра закрылась: ${seen ? `через ${played} с` : 'процесс не появился'}`);
+      safeMode.restore(settings);
+      send('game:exited', { seconds: played, neverStarted: !seen, safeMode: settings.get('safeMode') === true });
       // Не разворачиваем лаунчер, если процесс так и не нашли: это могло бы украсть фокус у игры
       if (seen && settings.get('afterLaunch') !== 'keep') showMain();
     }
@@ -346,14 +353,21 @@ function registerIpc() {
     if (win && after !== 'keep') {
       if (after === 'hide' || after === 'close') { createTray(); win.hide(); } else win.minimize();
     }
+    const gameDir = settings.get('gameDir');
+    const safe = settings.get('safeMode') === true;
     try {
-      await launchGame({
-        gameDir: settings.get('gameDir'),
+      if (safe) await safeMode.disable(gameDir, manifest, settings);
+      const run = await launchGame({
+        gameDir,
         nickname: settings.get('nickname'),
         server,
         manifest,
       });
+      lastLaunch = { at: new Date().toISOString(), gameDir, exe: run.exe, args: run.args, safeMode: safe, server: `${server.name} ${server.ip}:${server.port}` };
+      log.info('[launch]', JSON.stringify(lastLaunch));
     } catch (err) {
+      log.warn('[launch] ошибка:', err.message);
+      await safeMode.restore(settings);
       if (win && after !== 'keep') showMain();
       return { ok: false, error: err.message };
     }
@@ -369,6 +383,7 @@ function registerIpc() {
     const gameDir = settings.get('gameDir');
     if (!isInstalled(gameDir, manifest)) return { ok: false, error: 'Игра не установлена — нажмите «Установить»' };
     const fileList = await getFileList(manifest);
+    await safeMode.restore(settings);
     const result = await fixer.run({
       gameDir,
       manifest,
@@ -378,6 +393,27 @@ function registerIpc() {
     });
     log.info('[fix]', JSON.stringify(result));
     return result;
+  });
+
+  ipcMain.handle('support:report', async () => {
+    try {
+      const manifest = await getManifest();
+      const text = await diagnostics.buildReport({
+        gameDir: settings.get('gameDir'),
+        nickname: settings.get('nickname'),
+        manifest,
+        fileList: await getFileList(manifest),
+        prereqs,
+        launcherVersion: app.getVersion(),
+        lastLaunch,
+      });
+      const file = await diagnostics.saveReport(text);
+      try { clipboard.writeText(text); } catch {}
+      shell.showItemInFolder(file);
+      return { ok: true, file };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
   });
 
   ipcMain.handle('prereqs:check', async () => prereqs.check(await getManifest()));
@@ -449,6 +485,8 @@ function registerIpc() {
 // ───────────────────────── Старт ─────────────────────────
 app.whenReady().then(async () => {
   registerIpc();
+  // Если в прошлый раз лаунчер закрылся посреди безопасного запуска — возвращаем моды на место
+  safeMode.restore(settings);
   createSplash();
 
   // Пока проверяем обновление лаунчера — параллельно подтягиваем контент

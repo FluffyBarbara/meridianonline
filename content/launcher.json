@@ -140,7 +140,7 @@
     ]
   },
   "discord": {
-    "clientId": "",
+    "clientId": "1571910440064393296",
     "launcherText": "Смотрит лаунчер",
     "gameText": "Проводит время на Meridian Online | {server}",
     "largeImage": "https://raw.githubusercontent.com/FluffyBarbara/meridianonline/main/build/icon.png",
