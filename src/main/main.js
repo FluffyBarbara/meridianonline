@@ -17,7 +17,9 @@ const { GameFixer } = require('./game/fixer');
 const safeMode = require('./game/safemode');
 const diagnostics = require('./diagnostics');
 const { checkGpu } = require('./gpu');
-const { launchGame, isInstalled, isGameRunning, validateNickname } = require('./game/launch');
+const { launchGame, isInstalled, isGameRunning, getGamePid, validateNickname } = require('./game/launch');
+const { GameMemory } = require('./game/memory');
+const { PresenceEngine } = require('./game/presence');
 
 const DEV = process.argv.includes('--dev');
 const RENDERER = path.join(__dirname, '..', 'renderer');
@@ -228,7 +230,53 @@ async function gameStatus(force = false) {
 const launcherStartedAt = Date.now();
 let gameSession = null; // { server, startedAt }
 
-function updatePresence() {
+// Активность в игре: читаем состояние игрока из памяти gta_sa.exe (только чтение)
+const memory = new GameMemory();
+const presenceEngine = new PresenceEngine();
+let presenceTimer = null;
+let gameActivity = null; // { details, state, icon, iconText }
+let serverOnline = null; // { players, maxPlayers }
+let installActivity = null; // статус во время установки игры
+let lastPresence = { key: '', at: 0 };
+
+function startPresenceLoop(manifest) {
+  stopPresenceLoop();
+  presenceEngine.reset();
+  let tick = 0;
+  presenceTimer = setInterval(async () => {
+    const cfg = contentCache?.discord?.presence || {};
+    if (cfg.enabled === false || !gameSession) return;
+    const server = gameSession.server;
+    if (tick++ % 10 === 0 && server) {
+      queryServer(server.ip, server.port).then((q) => { serverOnline = q.online ? q : null; }).catch(() => {});
+    }
+    if (!memory.available) return; // не Windows или koffi недоступен — останется простой статус
+    if (!memory.handle) {
+      const pid = await getGamePid(manifest);
+      if (pid && !memory.attach(pid)) log.warn('[presence] нет доступа к памяти игры (игра запущена от администратора?)');
+    }
+    const snap = memory.handle ? memory.snapshot() : null;
+    if (memory.handle && !snap) memory.detach(); // процесс закрылся
+    gameActivity = memory.handle ? presenceEngine.build(snap, { server, cfg }) : null;
+    updatePresence();
+  }, 3000);
+}
+
+function stopPresenceLoop() {
+  clearInterval(presenceTimer);
+  presenceTimer = null;
+  memory.detach();
+  gameActivity = null;
+  serverOnline = null;
+}
+
+const clip = (s, n = 128) => {
+  s = String(s || '').trim();
+  if (s.length < 2) s = `${s}  `.slice(0, 2);
+  return s.length > n ? `${s.slice(0, n - 1)}…` : s;
+};
+
+function updatePresence(force = false) {
   const d = contentCache?.discord || {};
   discord.configure({
     clientId: d.clientId || config.DISCORD_CLIENT_ID,
@@ -243,18 +291,44 @@ function updatePresence() {
     .slice(0, 2)
     .map((b) => ({ label: String(b.label).slice(0, 32), url: b.url }));
 
-  const activity = gameRunning && gameSession
-    ? {
-        details: (d.gameText || 'Проводит время на Meridian Online | {server}').replace('{server}', gameSession.server?.name || ''),
-        timestamps: { start: gameSession.startedAt },
-        assets,
-      }
-    : {
-        details: d.launcherText || 'Смотрит лаунчер',
-        timestamps: { start: launcherStartedAt },
-        assets,
-      };
+  let activity;
+  if (gameRunning && gameSession) {
+    const server = gameSession.server || {};
+    const g = gameActivity;
+    const iconBase = d.presence?.iconBase || config.DISCORD_ICON_BASE;
+    activity = {
+      details: clip(g?.details || (d.gameText || 'Проводит время на Meridian Online | {server}').replace('{server}', server.name || '')),
+      timestamps: { start: gameSession.startedAt },
+      assets: { ...assets, large_text: `Meridian Online · ${server.name || ''}` },
+    };
+    if (g?.state) activity.state = clip(g.state);
+    if (g?.icon) Object.assign(activity.assets, { small_image: `${iconBase}${g.icon}.png`, small_text: clip(g.iconText) });
+    if (serverOnline?.maxPlayers && d.presence?.showOnline !== false) {
+      const max = serverOnline.maxPlayers;
+      activity.party = { id: `meridian-${server.id || 'server'}`, size: [Math.min(Math.max(1, serverOnline.players || 1), max), max] };
+    }
+  } else if (installActivity) {
+    activity = {
+      details: clip(installActivity.details),
+      state: clip(installActivity.state),
+      timestamps: { start: launcherStartedAt },
+      assets: { ...assets, small_image: `${d.presence?.iconBase || config.DISCORD_ICON_BASE}loading.png`, small_text: 'Установка' },
+    };
+  } else {
+    activity = {
+      details: d.launcherText || 'Смотрит лаунчер',
+      timestamps: { start: launcherStartedAt },
+      assets,
+    };
+  }
   if (buttons.length) activity.buttons = buttons;
+
+  // Discord ограничивает частоту обновлений: не чаще раза в 4 с и только при изменениях
+  const key = JSON.stringify([activity.details, activity.state, activity.assets.small_image, activity.party?.size]);
+  const now = Date.now();
+  if (!force && key === lastPresence.key && now - lastPresence.at < 60000) return;
+  if (!force && now - lastPresence.at < 4000) return;
+  lastPresence = { key, at: now };
   discord.setActivity(activity);
 }
 
@@ -279,7 +353,8 @@ function watchGame(manifest, server) {
   gameRunning = true;
   gameSession = { server, startedAt };
   send('game:running', true);
-  updatePresence();
+  updatePresence(true);
+  startPresenceLoop(manifest);
   watchTimer = setInterval(async () => {
     const running = await isGameRunning(manifest);
     if (running && !seen) { seen = true; seenAt = Date.now(); }
@@ -288,8 +363,9 @@ function watchGame(manifest, server) {
       clearInterval(watchTimer);
       gameRunning = false;
       gameSession = null;
+      stopPresenceLoop();
       send('game:running', false);
-      updatePresence();
+      updatePresence(true);
       // Игра закрылась почти сразу — скорее всего вылет: подскажем «Фикс игры»
       const played = seen ? Math.round((Date.now() - seenAt) / 1000) : 0;
       if (lastLaunch) Object.assign(lastLaunch, { playedSeconds: played, processSeen: seen });
@@ -326,7 +402,7 @@ function registerIpc() {
   ipcMain.handle('settings:get', () => settings.get());
   ipcMain.handle('settings:set', (_e, patch) => {
     const res = settings.set(patch);
-    if (patch && 'discordPresence' in patch) updatePresence();
+    if (patch && 'discordPresence' in patch) updatePresence(true);
     return res;
   });
 
@@ -496,7 +572,16 @@ function registerIpc() {
   ipcMain.handle('updater:install', () => updater.install());
   ipcMain.handle('updater:status', () => updater.status);
 
-  installer.on('progress', (p) => send('game:progress', p));
+  installer.on('progress', (p) => {
+    send('game:progress', p);
+    // Статус в Discord во время установки игры
+    const prev = installActivity?.state;
+    if (p.state === 'downloading') installActivity = { details: 'Устанавливает Meridian Online', state: `Загрузка игры · ${Math.floor((p.percent || 0) / 5) * 5}%` };
+    else if (p.state === 'extracting') installActivity = { details: 'Устанавливает Meridian Online', state: 'Распаковка файлов' };
+    else if (p.state === 'verifying' || p.state === 'preparing') installActivity = { details: 'Устанавливает Meridian Online', state: 'Подготовка' };
+    else installActivity = null;
+    if (installActivity?.state !== prev) updatePresence(!installActivity);
+  });
   prereqs.on('progress', (p) => {
     if (p.state === 'prereq-done') { if (!fixer.busy) send('game:progress', { state: 'idle' }); } else send('game:progress', p);
   });
