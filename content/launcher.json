@@ -6,7 +6,9 @@
       "ip": "80.242.59.112",
       "port": 2557,
       "accent": "#e8eefc",
-      "tag": "Основной"
+      "tag": "Основной",
+      "statusUrl": "https://meridian-rp.ru/api/online.php",
+      "maxPlayers": 50
     }
   ],
   "links": {
