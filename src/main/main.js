@@ -7,6 +7,7 @@ const { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu, nativeImage } = 
 const config = require('./config');
 const settings = require('./settings');
 const updater = require('./updater');
+const discord = require('./discord');
 const { loadRemoteJson } = require('./content');
 const { queryServer } = require('./game/query');
 const { GameInstaller } = require('./game/installer');
@@ -205,14 +206,50 @@ async function gameStatus(force = false) {
   };
 }
 
+// ───────────────────────── Discord ─────────────────────────
+const launcherStartedAt = Date.now();
+let gameSession = null; // { server, startedAt }
+
+function updatePresence() {
+  const d = contentCache?.discord || {};
+  discord.configure({
+    clientId: d.clientId || config.DISCORD_CLIENT_ID,
+    enabled: settings.get('discordPresence') !== false && d.enabled !== false,
+  });
+  const assets = {
+    large_image: d.largeImage || config.DISCORD_LARGE_IMAGE,
+    large_text: 'Meridian Online',
+  };
+  const buttons = (d.buttons || [])
+    .filter((b) => b && b.label && /^https?:\/\//.test(b.url))
+    .slice(0, 2)
+    .map((b) => ({ label: String(b.label).slice(0, 32), url: b.url }));
+
+  const activity = gameRunning && gameSession
+    ? {
+        details: (d.gameText || 'Проводит время на Meridian Online | {server}').replace('{server}', gameSession.server?.name || ''),
+        timestamps: { start: gameSession.startedAt },
+        assets,
+      }
+    : {
+        details: d.launcherText || 'Смотрит лаунчер',
+        timestamps: { start: launcherStartedAt },
+        assets,
+      };
+  if (buttons.length) activity.buttons = buttons;
+  discord.setActivity(activity);
+}
+
 // ───────────────────────── Слежение за игрой ─────────────────────────
 let watchTimer = null;
-function watchGame(manifest) {
+function watchGame(manifest, server) {
   clearInterval(watchTimer);
   let seen = false;
   const startedAt = Date.now();
   gameRunning = true;
+  gameSession = { server, startedAt };
   send('game:running', true);
+  updatePresence();
   watchTimer = setInterval(async () => {
     const running = await isGameRunning(manifest);
     if (running) seen = true;
@@ -220,7 +257,9 @@ function watchGame(manifest) {
     if ((seen && !running) || gaveUp) {
       clearInterval(watchTimer);
       gameRunning = false;
+      gameSession = null;
       send('game:running', false);
+      updatePresence();
       if (settings.get('afterLaunch') !== 'keep') showMain();
     }
   }, 3000);
@@ -248,7 +287,11 @@ function registerIpc() {
   });
 
   ipcMain.handle('settings:get', () => settings.get());
-  ipcMain.handle('settings:set', (_e, patch) => settings.set(patch));
+  ipcMain.handle('settings:set', (_e, patch) => {
+    const res = settings.set(patch);
+    if (patch && 'discordPresence' in patch) updatePresence();
+    return res;
+  });
 
   ipcMain.handle('content:get', (_e, force) => getContent(force));
 
@@ -287,7 +330,7 @@ function registerIpc() {
     } catch (err) {
       return { ok: false, error: err.message };
     }
-    watchGame(manifest);
+    watchGame(manifest, server);
     const after = settings.get('afterLaunch');
     setTimeout(() => {
       if (!win) return;
@@ -374,12 +417,18 @@ app.whenReady().then(async () => {
   if (result === 'installing') return; // лаунчер перезапустится уже новой версией
 
   createMain();
+  getContent().then(updatePresence);
+  // Новый контент (например, Application ID Discord) подхватываем раз в 10 минут
+  setInterval(() => getContent(true).then(updatePresence).catch(() => {}), 10 * 60 * 1000);
 
   // Фоновая проверка обновлений лаунчера каждые 30 минут
   setInterval(() => updater.check(), 30 * 60 * 1000);
 });
 
-app.on('before-quit', () => installer.cancel && installer.busy && installer.pause());
+app.on('before-quit', () => {
+  if (installer.busy) installer.pause();
+  discord.disconnect();
+});
 
 app.on('window-all-closed', () => {
   if (!installer.busy && !prereqs.busy) app.quit();

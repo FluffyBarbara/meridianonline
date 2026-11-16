@@ -30,7 +30,6 @@ function paintStaticIcons() {
   $('#heroPrev').innerHTML = icon('chevron-left');
   $('#heroNext').innerHTML = icon('chevron-right');
   $('#openFolderBtn').innerHTML = `${icon('folder-open')}Папка игры`;
-  $$('.tab[data-link]').forEach((t) => t.insertAdjacentHTML('beforeend', icon('external-link')));
   const rows = {
     'open-folder': ['folder-open', 'Открыть папку игры'],
     verify: ['wrench', 'Переустановить игру'],
@@ -661,6 +660,19 @@ function renderSupport() {
 }
 
 // ═════════════════ Вкладки ═════════════════
+const LINK_TITLES = { forum: 'Форум', site: 'Сайт', shop: 'Магазин' };
+
+/** Внешние ссылки во вкладках: со стрелкой ↗ или с пометкой «скоро», если ссылки пока нет. */
+function renderLinkTabs() {
+  $$('.tab[data-link]').forEach((t) => {
+    t.querySelectorAll('.ico, .tab__soon').forEach((x) => x.remove());
+    const url = state.content.links?.[t.dataset.link];
+    t.classList.toggle('is-soon', !url);
+    t.insertAdjacentHTML('beforeend', url ? icon('external-link') : '<span class="tab__soon">скоро</span>');
+    t.title = url ? url.replace(/^https?:\/\//, '').replace(/\/$/, '') : 'Скоро добавится';
+  });
+}
+
 function switchView(name) {
   $$('.tab[data-view]').forEach((t) => t.classList.toggle('is-active', t.dataset.view === name));
   $$('.view').forEach((v) => v.classList.toggle('is-active', v.dataset.view === name));
@@ -674,7 +686,7 @@ function bindTabs() {
     else if (t.dataset.link) {
       const url = state.content.links?.[t.dataset.link];
       if (url) api.app.open(url);
-      else toast({ title: 'Скоро', text: 'Раздел появится в ближайшее время.' });
+      else toast({ title: `${LINK_TITLES[t.dataset.link] || 'Раздел'} скоро добавится`, text: 'Следите за новостями проекта.' });
     }
   });
   $$('.row-btn').forEach((b) => b.addEventListener('click', () => {
@@ -766,6 +778,13 @@ function openSettings() {
             <div class="set-row__desc">Снег, туман и параллакс. Отключите на слабых ПК</div>
           </div>
           <label class="switch"><input type="checkbox" data-set="animatedBackground" ${s.animatedBackground ? 'checked' : ''}><span></span></label>
+        </div>
+        <div class="set-row">
+          <div class="set-row__text">
+            <div class="set-row__label">Статус в Discord</div>
+            <div class="set-row__desc">Показывать друзьям «Смотрит лаунчер» или «Проводит время на Meridian Online»</div>
+          </div>
+          <label class="switch"><input type="checkbox" data-set="discordPresence" ${s.discordPresence !== false ? 'checked' : ''}><span></span></label>
         </div>
       </div>
 
@@ -899,6 +918,7 @@ async function boot() {
   renderNews();
   renderSocials();
   renderSupport();
+  renderLinkTabs();
   renderStatus();
 
   $('#heroPrev').addEventListener('click', () => showSlide(slideIdx - 1));
@@ -930,6 +950,7 @@ async function boot() {
       state.content = await api.content.get(true);
       renderNews();
       renderSocials();
+      renderLinkTabs();
     } catch {}
     if (!state.progress || !BUSY.includes(state.progress.state)) refreshGame(true);
   }, 10 * 60 * 1000);
