@@ -17,6 +17,7 @@ let progressCb = null;
 const api = {
   app: {
     info: async () => ({ version: '1.0.0', packaged: false }),
+    openWindowsUpdate: async () => {},
     minimize() {}, close() {}, open: async (u) => console.log('open', u),
   },
   settings: {
@@ -41,7 +42,7 @@ const api = {
     }),
     install: () => new Promise(() => {}),
     pause: async () => {}, cancel: async () => {},
-    launch: async (id, o) => (o?.skipPrereqs ? { ok: true } : { ok: false, needPrereqs: ['DirectX 9.0c', 'Visual C++ 2015–2022 (x86)'] }),
+    launch: async (id, o) => (scenario === 'nodriver' && !o?.skipGpu ? { ok: false, needDriver: { vendor: 'nvidia', vendorName: 'NVIDIA', url: 'https://www.nvidia.com/ru-ru/drivers/', adapter: 'Базовый видеоадаптер (Майкрософт)' } } : o?.skipPrereqs ? { ok: true } : { ok: false, needPrereqs: ['DirectX 9.0c', 'Visual C++ 2015–2022 (x86)'] }),
     validateNick: async (n) => (/^[A-Za-z0-9_]{3,20}$/.test(n) ? null : 'Ник: 3–20 символов, латиница, цифры и _'),
     chooseDir: async () => ({ ok: false }),
     openDir: async () => true,
@@ -64,6 +65,11 @@ const api = {
   prereqs: {
     check: async () => [{ id: 'directx', name: 'DirectX 9.0c', installed: false }, { id: 'vc2015', name: 'Visual C++ 2015–2022 (x86)', installed: true }],
     install: async () => ({ ok: true, installed: ['DirectX 9.0c'], failed: [] }),
+  },
+  gpu: {
+    check: async () => (scenario === 'nodriver'
+      ? { checked: true, adapters: ['Базовый видеоадаптер (Майкрософт)'], problem: { vendor: 'nvidia', vendorName: 'NVIDIA', url: 'https://www.nvidia.com/ru-ru/drivers/', adapter: 'Базовый видеоадаптер (Майкрософт)' } }
+      : { checked: true, adapters: ['NVIDIA GeForce RTX 3060'], problem: null }),
   },
   support: { report: async () => ({ ok: true, file: 'C:\\Users\\User\\Desktop\\Meridian-отчёт.txt' }) },
   servers: {

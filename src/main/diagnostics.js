@@ -23,7 +23,9 @@ const GAME_LOGS = [
 function ps(command) {
   return new Promise((resolve) => {
     if (process.platform !== 'win32') return resolve('');
-    execFile('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command],
+    // UTF-8, иначе русская Windows отдаёт текст в OEM-кодировке (cp866) и он превращается в «�����»
+    const utf8 = '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; ';
+    execFile('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', utf8 + command],
       { windowsHide: true, timeout: 30000, maxBuffer: 4 * 1024 * 1024 }, (err, out) => resolve(String(out || '').trim()));
   });
 }
@@ -53,7 +55,7 @@ async function listDir(dir) {
   }
 }
 
-async function buildReport({ gameDir, nickname, manifest, fileList, prereqs, launcherVersion, lastLaunch }) {
+async function buildReport({ gameDir, nickname, manifest, fileList, prereqs, launcherVersion, lastLaunch, gpu }) {
   const out = [];
   const section = (title, body) => out.push(`\n==================== ${title} ====================\n${body ?? '(нет данных)'}`);
 
@@ -66,10 +68,15 @@ async function buildReport({ gameDir, nickname, manifest, fileList, prereqs, lau
     '"Windows: $($o.Caption) $($o.Version) $($o.OSArchitecture), сборка $($o.BuildNumber)";',
     '"Процессор: $((Get-CimInstance Win32_Processor | Select-Object -First 1).Name)";',
     '"ОЗУ: $([math]::Round($o.TotalVisibleMemorySize/1MB,1)) ГБ, свободно $([math]::Round($o.FreePhysicalMemory/1MB,1)) ГБ";',
-    'Get-CimInstance Win32_VideoController | ForEach-Object { "Видеокарта: $($_.Name) | драйвер $($_.DriverVersion) от $($_.DriverDate) | $($_.CurrentHorizontalResolution)x$($_.CurrentVerticalResolution) @ $($_.CurrentRefreshRate) Гц | статус $($_.Status)" };',
+    'Get-CimInstance Win32_VideoController | ForEach-Object { "Видеокарта: $($_.Name) | драйвер $($_.DriverVersion) от $($_.DriverDate) | $($_.CurrentHorizontalResolution)x$($_.CurrentVerticalResolution) @ $($_.CurrentRefreshRate) Гц | статус $($_.Status) | $($_.PNPDeviceID) | $($_.InfFilename)" };',
     '$dp = Get-CimInstance Win32_OptionalFeature -Filter "Name=\'DirectPlay\'" -ErrorAction SilentlyContinue; "DirectPlay: InstallState=$($dp.InstallState)";',
   ].join(' '));
   section('Система', sys || `${os.type()} ${os.release()} ${os.arch()}, ОЗУ ${(os.totalmem() / 1073741824).toFixed(1)} ГБ`);
+  if (gpu?.checked) {
+    section('Драйвер видеокарты', gpu.problem
+      ? `✖ НЕ УСТАНОВЛЕН: Windows работает через «${gpu.problem.adapter}», аппаратного Direct3D нет — GTA не запустится.\nПроизводитель видеокарты: ${gpu.problem.vendorName || 'не определён'}. Драйвер: ${gpu.problem.url}`
+      : `✔ ${gpu.adapters.join('\n✔ ')}`);
+  }
 
   try {
     const displays = screen.getAllDisplays().map((d, i) =>

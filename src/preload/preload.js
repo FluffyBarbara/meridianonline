@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('meridian', {
     minimize: () => ipcRenderer.send('window:minimize'),
     close: () => ipcRenderer.send('window:close'),
     open: (url) => ipcRenderer.invoke('shell:open', url),
+    openWindowsUpdate: () => ipcRenderer.invoke('shell:windows-update'),
   },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
@@ -42,6 +43,9 @@ contextBridge.exposeInMainWorld('meridian', {
   prereqs: {
     check: () => ipcRenderer.invoke('prereqs:check'),
     install: () => ipcRenderer.invoke('prereqs:install'),
+  },
+  gpu: {
+    check: (force) => ipcRenderer.invoke('gpu:check', force),
   },
   support: {
     report: () => ipcRenderer.invoke('support:report'),
