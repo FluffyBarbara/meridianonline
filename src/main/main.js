@@ -249,7 +249,7 @@ function startPresenceLoop(manifest) {
     if (cfg.enabled === false || !gameSession) return;
     const server = gameSession.server;
     if (tick++ % 10 === 0 && server) {
-      queryServer(server.ip, server.port).then((q) => { serverOnline = q.online ? q : null; }).catch(() => {});
+      queryServer(server.ip, server.port, { queryPort: server.queryPort, statusUrl: server.statusUrl }).then((q) => { serverOnline = q.online === true ? q : null; }).catch(() => {});
     }
     if (!memory.available) return; // не Windows или koffi недоступен — останется простой статус
     if (!memory.handle) {
@@ -565,7 +565,7 @@ function registerIpc() {
   ipcMain.handle('server:query', async (_e, ids) => {
     const content = await getContent();
     const list = content.servers.filter((s) => !ids || ids.includes(s.id));
-    const results = await Promise.all(list.map(async (s) => ({ id: s.id, ...(await queryServer(s.ip, s.port)) })));
+    const results = await Promise.all(list.map(async (s) => ({ id: s.id, ...(await queryServer(s.ip, s.port, { queryPort: s.queryPort, statusUrl: s.statusUrl })) })));
     return results;
   });
 

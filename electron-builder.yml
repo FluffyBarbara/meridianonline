@@ -8,9 +8,12 @@ directories:
   buildResources: build
 
 files:
+  # Код берётся из dist-app (собран esbuild'ом и обфусцирован scripts/bundle.js).
+  # Исходники src/** в установщик не попадают.
   - package.json
-  - src/**/*
-  - "!src/renderer/js/mock.js"
+  - from: dist-app/src
+    to: src
+    filter: ["**/*"]
   - content/launcher.json
   - game/manifest.json
   - game/files.json

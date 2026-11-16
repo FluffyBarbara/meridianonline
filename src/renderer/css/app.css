@@ -884,3 +884,13 @@ input { font: inherit; color: inherit; }
 .driver-lead b { color: var(--text); }
 .crash-step--static { cursor: default; }
 .crash-step--static:hover { transform: none; border-color: var(--line); }
+.server.is-unknown .server__dot { background: var(--amber); box-shadow: 0 0 0 4px rgba(255, 181, 71, .12), 0 0 10px rgba(255, 181, 71, .5); }
+
+/* копирайт разработчика */
+.credit {
+  margin-top: 10px; align-self: flex-start;
+  font-size: 10.5px; color: var(--text-3); letter-spacing: .01em;
+  transition: color .2s;
+}
+.credit b { font-weight: 700; color: var(--text-2); transition: color .2s; }
+.credit:hover, .credit:hover b { color: var(--accent-2); }

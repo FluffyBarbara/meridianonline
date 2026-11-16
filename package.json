@@ -1,7 +1,7 @@
 {
   "name": "meridian-online-launcher",
   "productName": "Meridian Online",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Официальный лаунчер Meridian Online (CRMP)",
   "main": "src/main/main.js",
   "author": "Meridian Online",
@@ -14,9 +14,10 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
-    "dist": "electron-builder --win --publish never",
-    "release": "electron-builder --win --publish always",
-    "pack-game": "node scripts/pack-game.js"
+    "dist": "node scripts/bundle.js && electron-builder --win --publish never",
+    "release": "node scripts/bundle.js && electron-builder --win --publish always",
+    "pack-game": "node scripts/pack-game.js",
+    "bundle": "node scripts/bundle.js"
   },
   "dependencies": {
     "7zip-bin": "^5.2.0",
@@ -27,6 +28,8 @@
   "devDependencies": {
     "electron": "^38.4.0",
     "electron-builder": "^26.0.12",
+    "esbuild": "^0.24.2",
+    "javascript-obfuscator": "^4.1.1",
     "node-unrar-js": "^2.0.2"
   }
 }
