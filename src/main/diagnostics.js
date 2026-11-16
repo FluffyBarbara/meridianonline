@@ -117,6 +117,27 @@ async function buildReport({ gameDir, nickname, manifest, fileList, prereqs, lau
   const userFiles = path.join(app.getPath('documents'), 'GTA San Andreas User Files');
   section('Документы\\GTA San Andreas User Files', `${userFiles}\n${await listDir(userFiles)}`);
 
+  // Клиент CEF (omp-cef): лог, настройки и скачанные с сервера ресурсы
+  const cefDir = path.join(userFiles, 'cef');
+  const cefLog = await tail(path.join(cefDir, 'client.log'), 250);
+  section('CEF: client.log', cefLog || '(нет — клиент CEF ещё не запускался)');
+  try { section('CEF: config.json', await fsp.readFile(path.join(cefDir, 'config.json'), 'utf8')); } catch {}
+  const cacheRoot = path.join(cefDir, 'cache');
+  const cacheRows = [];
+  for (const server of await fsp.readdir(cacheRoot, { withFileTypes: true }).catch(() => [])) {
+    if (!server.isDirectory()) continue;
+    cacheRows.push(`[${server.name}]`);
+    for (const f of await fsp.readdir(path.join(cacheRoot, server.name), { withFileTypes: true }).catch(() => [])) {
+      let info = '';
+      try {
+        const st = await fsp.stat(path.join(cacheRoot, server.name, f.name));
+        info = ` — ${st.size} Б, изменён ${st.mtime.toLocaleString('ru-RU')}`;
+      } catch {}
+      cacheRows.push(`  ${f.name}${info}`);
+    }
+  }
+  section('CEF: кеш ресурсов сервера', cacheRows.join('\n') || '(пусто)');
+
   if (lastLaunch) section('Последний запуск', JSON.stringify(lastLaunch, null, 2));
 
   // Логи игры

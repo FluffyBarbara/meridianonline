@@ -176,6 +176,20 @@ class GameFixer extends EventEmitter {
         } else add('settings', 'Настройки графики GTA', 'ok', 'Файл настроек ещё не создан — сбрасывать нечего');
       }
 
+      // 4.1. Кеш интерфейса CEF (omp-cef): при следующем входе на сервер ресурсы скачаются заново
+      {
+        this.progress('Очищаем кеш интерфейса (CEF)');
+        const cache = path.join(this.documentsDir, 'GTA San Andreas User Files', 'cef', 'cache');
+        if (fs.existsSync(cache)) {
+          try {
+            await fsp.rm(cache, { recursive: true, force: true });
+            add('cef', 'Кеш интерфейса (CEF)', 'ok', 'Очищен — при входе на сервер интерфейс скачается заново');
+          } catch (e) {
+            add('cef', 'Кеш интерфейса (CEF)', 'warn', `Не удалось очистить: ${e.message}. Закройте игру и повторите`);
+          }
+        } else add('cef', 'Кеш интерфейса (CEF)', 'ok', 'Кеша ещё нет');
+      }
+
       // 5. Режимы совместимости
       if (win) {
         this.progress('Снимаем режимы совместимости Windows');

@@ -148,3 +148,14 @@ npm run pack-game -- --src "E:\Meridian\Meridian Online" --version 1.0.0 --uploa
 - в «Фиксе игры» и в «Отчёте для поддержки».
 
 Производителя видеокарты он определяет по коду устройства (`VEN_10DE` — NVIDIA, `VEN_1002` — AMD, `VEN_8086` — Intel). Если драйвера нет, лаунчер показывает ссылку на драйвер нужного производителя и кнопку «Центр обновления Windows → Необязательные обновления».
+
+## Интерфейс CEF (omp-cef)
+
+Внутриигровой интерфейс работает на [omp-cef](https://github.com/aurora-mp/omp-cef). Сервер упаковывает папку `scriptfiles/cef/<ресурс>/` в зашифрованный `<ресурс>.pak`, клиент скачивает его в `Документы\GTA San Andreas User Files\cef\cache\<ip>_<port>\` и отдаёт файлы по адресу `http://cef/<ресурс>/<путь>`. Лог клиента: `Документы\GTA San Andreas User Files\cef\client.log`. Он попадает в «Отчёт для поддержки», а «Фикс игры» очищает кеш.
+
+Если вместо интерфейса показывается `This site can't be reached … http://cef/assets/index.html ERR_FAILED`, значит, после загрузки `assets.pak` в нём не нашлось `index.html`:
+
+1. **Структура.** На сервере должен лежать ровно `scriptfiles/cef/assets/index.html`, без лишней вложенной папки.
+2. **Регистр букв.** Имя в `CEF_AddResource("assets")`, папка и путь в `CEF_CreateBrowser(..., "http://cef/assets/index.html", ...)` должны совпадать с учётом регистра.
+3. **Ключ.** Если меняли `cef.master_resource_key` в `config.json` (или `cef_master_resource_key` в `server.cfg`), удалите `scriptfiles/cef/assets.pak` и `scriptfiles/cef/assets.pak.manifest` и перезапустите сервер. Сервер не замечает смену ключа и продолжает раздавать PAK, зашифрованный старым ключом, а клиент не может расшифровать `.html`, `.css` и `.js`. Ключ должен быть ровно 16, 24 или 32 байта; кириллица занимает по 2 байта на символ.
+4. **Ограничения.** Файлы больше 20 МБ и с расширениями не из списка (`.html .css .js .json .xml .png .jpg .jpeg .gif .svg .ico .mp3 .ogg .wav .woff .woff2 .ttf .otf .eot`) сервер молча пропускает. Например, `.webp` и `.mp4` не попадут в PAK.
