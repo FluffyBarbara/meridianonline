@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self'; connect-src 'self'">
+  <title>Meridian Online</title>
+  <link rel="stylesheet" href="css/fonts.css">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <!-- ═════════════ Фон ═════════════ -->
+  <div class="scene" id="scene">
+    <div class="scene__sky"></div>
+    <div class="scene__art" id="sceneArt"></div>
+    <div class="scene__fog scene__fog--a"></div>
+    <div class="scene__skyline"></div>
+    <div class="scene__fog scene__fog--b"></div>
+    <canvas class="scene__snow" id="snow"></canvas>
+    <div class="scene__vignette"></div>
+  </div>
+
+  <div class="app">
+    <!-- ═════════════ Сайдбар ═════════════ -->
+    <aside class="sidebar">
+      <div class="brand drag">
+        <img class="brand__logo" src="assets/logo.svg" alt="">
+        <div class="brand__text">
+          <div class="brand__name">MERIDIAN ONLINE</div>
+          <div class="brand__online">
+            <span class="pulse" id="onlineDot"></span>
+            Игроков онлайн: <b id="onlineTotal">…</b>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-label">Игровые сервера</div>
+      <div class="servers" id="servers"></div>
+
+      <div class="sidebar__spacer"></div>
+
+      <div class="status" id="status">
+        <div class="status__head">
+          <div class="status__title" id="statusTitle">Проверка файлов…</div>
+          <div class="status__pct" id="statusPct"></div>
+        </div>
+        <div class="bar"><div class="bar__fill" id="statusBar"></div></div>
+        <div class="status__foot">
+          <div class="status__info" id="statusInfo"></div>
+          <div class="status__actions" id="statusActions"></div>
+        </div>
+      </div>
+
+      <button class="play" id="playBtn" disabled>
+        <span class="play__shine"></span>
+        <span class="play__label" id="playLabel">Загрузка…</span>
+      </button>
+
+      <div class="sidebar__foot">
+        <span id="versionLabel">v—</span>
+        <button class="link-btn" id="openFolderBtn" title="Открыть папку игры"></button>
+      </div>
+    </aside>
+
+    <!-- ═════════════ Основная часть ═════════════ -->
+    <main class="main">
+      <header class="topbar drag">
+        <div class="account no-drag" id="account" tabindex="0" role="button">
+          <div class="account__avatar" id="accountAvatar"></div>
+          <div class="account__text">
+            <div class="account__label">Аккаунт</div>
+            <div class="account__name" id="accountName">Не указан</div>
+          </div>
+          <div class="account__chev" id="accountChev"></div>
+        </div>
+
+        <div class="update-pill no-drag" id="updatePill" hidden></div>
+
+        <div class="winctl no-drag">
+          <button class="winctl__btn" id="btnSettings" title="Настройки"></button>
+          <button class="winctl__btn" id="btnMin" title="Свернуть"></button>
+          <button class="winctl__btn winctl__btn--close" id="btnClose" title="Закрыть"></button>
+        </div>
+      </header>
+
+      <nav class="tabs" id="tabs">
+        <button class="tab is-active" data-view="home">Главная</button>
+        <button class="tab" data-view="news">Новости</button>
+        <button class="tab" data-link="forum">Форум</button>
+        <button class="tab" data-link="shop">Магазин</button>
+        <button class="tab" data-view="support">Поддержка</button>
+        <span class="tabs__indicator" id="tabIndicator"></span>
+      </nav>
+
+      <section class="views">
+        <!-- Главная -->
+        <div class="view is-active" data-view="home">
+          <div class="home">
+            <div class="home__left">
+              <div class="hero card" id="hero">
+                <div class="hero__media" id="heroMedia"></div>
+                <div class="hero__body" id="heroBody"></div>
+                <div class="hero__nav">
+                  <div class="hero__dots" id="heroDots"></div>
+                  <div class="hero__arrows">
+                    <button class="icon-btn" id="heroPrev"></button>
+                    <button class="icon-btn" id="heroNext"></button>
+                  </div>
+                </div>
+              </div>
+              <div class="features" id="features"></div>
+            </div>
+            <div class="home__right">
+              <div class="card news-card">
+                <div class="card__title"><span class="card__accent"></span>Новости проекта</div>
+                <div class="news-list scroll" id="newsList"></div>
+              </div>
+              <div class="card socials" id="socials"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Новости -->
+        <div class="view" data-view="news">
+          <div class="page scroll">
+            <h2 class="page__title">Новости и обновления</h2>
+            <div class="news-grid" id="newsGrid"></div>
+          </div>
+        </div>
+
+        <!-- Поддержка -->
+        <div class="view" data-view="support">
+          <div class="page scroll">
+            <h2 class="page__title">Поддержка</h2>
+            <p class="page__lead" id="supportText"></p>
+            <div class="support">
+              <div class="faq" id="faq"></div>
+              <div class="support__side">
+                <div class="contacts" id="contacts"></div>
+                <div class="card diag">
+                  <div class="card__title"><span class="card__accent"></span>Быстрые действия</div>
+                  <button class="row-btn" data-action="open-folder"></button>
+                  <button class="row-btn" data-action="verify"></button>
+                  <button class="row-btn" data-action="settings"></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Поповер аккаунта -->
+  <div class="popover" id="accountPop" hidden>
+    <div class="popover__title">Игровой ник</div>
+    <div class="field">
+      <input class="input" id="nickInput" maxlength="20" spellcheck="false" placeholder="Имя_Фамилия">
+      <button class="btn btn--primary" id="nickSave">Сохранить</button>
+    </div>
+    <div class="field__hint" id="nickHint">Формат: Имя_Фамилия, только латиница. Например: Ivan_Petrov</div>
+  </div>
+
+  <!-- Модальные окна -->
+  <div class="modal" id="modal" hidden>
+    <div class="modal__backdrop" data-close></div>
+    <div class="modal__dialog" id="modalDialog"></div>
+  </div>
+
+  <div class="toasts" id="toasts"></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

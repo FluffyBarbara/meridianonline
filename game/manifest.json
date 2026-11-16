@@ -1,0 +1,19 @@
+{
+  "version": "0.0.0",
+  "unpackedSize": 0,
+  "archives": [],
+  "launch": {
+    "exe": "samp.exe",
+    "args": ["{ip}:{port}"],
+    "fallback": {
+      "exe": "gta_sa.exe",
+      "args": ["-c", "-n", "{nick}", "-h", "{ip}", "-p", "{port}"]
+    },
+    "registry": [
+      { "key": "HKCU\\Software\\SAMP", "name": "PlayerName", "value": "{nick}" },
+      { "key": "HKCU\\Software\\SAMP", "name": "gta_sa_exe", "value": "{gameDir}\\gta_sa.exe" }
+    ],
+    "process": "gta_sa.exe",
+    "required": ["gta_sa.exe"]
+  }
+}
