@@ -82,7 +82,7 @@ function queryOnce(ip, port, timeout) {
 }
 
 /** UDP-запрос с повторами. */
-async function queryUdp(ip, port, { timeout = 1800, retries = 2 } = {}) {
+async function queryUdp(ip, port, { timeout = 1500, retries = 1 } = {}) {
   for (let i = 0; i <= retries; i++) {
     const r = await queryOnce(ip, port, timeout);
     if (r) return r;
@@ -90,27 +90,44 @@ async function queryUdp(ip, port, { timeout = 1800, retries = 2 } = {}) {
   return null;
 }
 
-/** HTTP-источник онлайна: JSON в разных форматах. */
-async function queryHttp(url, timeout = 6000) {
+/**
+ * HTTP-источник онлайна: JSON в разных форматах, в т.ч. meridian-rp.ru/api/online.php
+ *   { "servers": [ { "name": "White", "online": 0, "max": 50, "status": "online" } ] }
+ * @param {string} serverName — имя сервера для выбора из массива servers
+ */
+async function queryHttp(url, serverName, timeout = 6000) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeout);
   try {
     const res = await fetch(url, { signal: ctrl.signal, headers: { 'User-Agent': 'MeridianLauncher', Accept: 'application/json' } });
     if (!res.ok) return null;
     const data = await res.json();
-    const pick = (obj, keys) => {
+    const num = (obj, keys) => {
       for (const k of keys) {
-        if (obj == null) break;
-        const v = obj[k];
+        const v = obj?.[k];
         if (typeof v === 'number') return v;
         if (typeof v === 'string' && v.trim() !== '' && !isNaN(+v)) return +v;
       }
       return null;
     };
-    const node = data.server || data.data || data;
-    const players = pick(node, ['players', 'online', 'playersOnline', 'current', 'count']);
-    const maxPlayers = pick(node, ['maxPlayers', 'maxplayers', 'max', 'slots', 'maxPlayersOnline']);
-    if (players === null && maxPlayers === null && node.online !== true) return null;
+
+    // Выбираем нужный сервер, если ответ — массив серверов
+    let node = data.server || data.data || data;
+    const list = data.servers || data.data?.servers || (Array.isArray(data) ? data : null);
+    if (Array.isArray(list) && list.length) {
+      node = (serverName && list.find((s) => String(s.name || '').toLowerCase() === serverName.toLowerCase())) || list[0];
+    }
+    if (!node || typeof node !== 'object') return null;
+
+    // Явный статус offline — сервер лежит
+    const status = String(node.status || '').toLowerCase();
+    if (status === 'offline' || node.online === false || node.isOnline === false) {
+      return { online: false, source: 'http' };
+    }
+
+    const players = num(node, ['players', 'online', 'playersOnline', 'current', 'count', 'players_online']);
+    const maxPlayers = num(node, ['maxPlayers', 'maxplayers', 'max', 'slots', 'maxPlayersOnline', 'max_players']);
+    if (players === null && maxPlayers === null && status !== 'online' && node.online !== true) return null;
     return { online: true, source: 'http', players: players ?? 0, maxPlayers: maxPlayers ?? null, ping: null };
   } catch {
     return null;
@@ -127,23 +144,33 @@ async function queryHttp(url, timeout = 6000) {
  */
 async function queryServer(host, port, opts = {}) {
   let ip;
-  try { ip = await resolveIp(host); } catch { return { online: 'unknown', error: 'dns' }; }
-
-  const udp = await queryUdp(ip, port, opts);
-  if (udp) return udp;
-
-  if (opts.queryPort && opts.queryPort !== port) {
-    const alt = await queryUdp(ip, opts.queryPort, opts);
-    if (alt) return alt;
+  try { ip = await resolveIp(host); } catch {
+    // DNS не разрешился, но HTTP-источник может работать (ему IP не нужен)
+    if (opts.statusUrl) {
+      const http = await queryHttp(opts.statusUrl, opts.name);
+      if (http) return http;
+    }
+    return { online: 'unknown', error: 'dns' };
   }
 
-  if (opts.statusUrl) {
-    const http = await queryHttp(opts.statusUrl);
-    if (http) return http;
-    return { online: false, error: 'status-url' };
-  }
+  // UDP (с запасным портом) и HTTP запускаем параллельно, чтобы при неотвечающем
+  // query не ждать таймаут перед обращением к HTTP-источнику.
+  const udpTask = (async () => {
+    const main = await queryUdp(ip, port, opts);
+    if (main) return main;
+    if (opts.queryPort && opts.queryPort !== port) return queryUdp(ip, opts.queryPort, opts);
+    return null;
+  })();
+  const httpTask = opts.statusUrl ? queryHttp(opts.statusUrl, opts.name) : Promise.resolve(null);
 
-  // Сервер не ответил на query, но доказательств, что он офлайн, нет
+  // UDP предпочтительнее (даёт пинг); ждём его, HTTP тем временем уже грузится
+  const udp = await udpTask;
+  if (udp && udp.online === true) return udp;
+
+  const http = await httpTask;
+  if (http) return http;
+
+  // UDP мог доказать офлайн-статус только через HTTP; сам по себе таймаут — не доказательство
   return { online: 'unknown', error: 'timeout' };
 }
 
