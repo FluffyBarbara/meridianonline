@@ -16,6 +16,7 @@ const { Prereqs } = require('./game/prereqs');
 const { GameFixer } = require('./game/fixer');
 const safeMode = require('./game/safemode');
 const diagnostics = require('./diagnostics');
+const { checkGpu } = require('./gpu');
 const { launchGame, isInstalled, isGameRunning, validateNickname } = require('./game/launch');
 
 const DEV = process.argv.includes('--dev');
@@ -259,6 +260,15 @@ function updatePresence() {
 
 let lastLaunch = null;
 
+// Драйвер видеокарты: результат «всё хорошо» кешируем, проблему перепроверяем (вдруг уже поставили драйвер)
+let gpuCache = null;
+async function getGpu(force = false) {
+  if (gpuCache && !gpuCache.problem && !force) return gpuCache;
+  gpuCache = await checkGpu();
+  if (gpuCache.problem) log.warn('[gpu] драйвер видеокарты не установлен:', JSON.stringify(gpuCache));
+  return gpuCache;
+}
+
 // ───────────────────────── Слежение за игрой ─────────────────────────
 let watchTimer = null;
 function watchGame(manifest, server) {
@@ -343,6 +353,10 @@ function registerIpc() {
     const content = await getContent();
     const server = content.servers.find((s) => s.id === serverId) || content.servers[0];
     const manifest = await getManifest();
+    if (!opts.skipGpu) {
+      const gpu = await getGpu();
+      if (gpu.problem) return { ok: false, needDriver: gpu.problem };
+    }
     if (!opts.skipPrereqs) {
       const missing = await prereqs.missing(manifest);
       if (missing.length) return { ok: false, needPrereqs: missing.map((p) => p.name) };
@@ -391,6 +405,13 @@ function registerIpc() {
       nickname: settings.get('nickname'),
       options: { components: options.components !== false, defender: options.defender !== false, resetSettings: options.resetSettings !== false },
     });
+    const gpu = await getGpu(true);
+    if (gpu.checked && result.steps) {
+      result.steps.unshift(gpu.problem
+        ? { id: 'gpu', title: 'Драйвер видеокарты', status: 'fail', text: `Не установлен — Windows работает через «${gpu.problem.adapter}». Без драйвера${gpu.problem.vendorName ? ` ${gpu.problem.vendorName}` : ''} GTA не может запуститься` }
+        : { id: 'gpu', title: 'Драйвер видеокарты', status: 'ok', text: gpu.adapters.join(', ') });
+      if (gpu.problem) result.driver = gpu.problem;
+    }
     log.info('[fix]', JSON.stringify(result));
     return result;
   });
@@ -406,6 +427,7 @@ function registerIpc() {
         prereqs,
         launcherVersion: app.getVersion(),
         lastLaunch,
+        gpu: await getGpu(true),
       });
       const file = await diagnostics.saveReport(text);
       try { clipboard.writeText(text); } catch {}
@@ -466,6 +488,9 @@ function registerIpc() {
   ipcMain.handle('shell:open', (_e, url) => {
     if (typeof url === 'string' && /^https?:\/\//i.test(url)) shell.openExternal(url);
   });
+  // Центр обновления Windows → необязательные обновления (там Windows предлагает драйверы)
+  ipcMain.handle('shell:windows-update', () => shell.openExternal('ms-settings:windowsupdate-optionalupdates'));
+  ipcMain.handle('gpu:check', (_e, force) => getGpu(force));
 
   ipcMain.handle('updater:check', () => updater.check());
   ipcMain.handle('updater:install', () => updater.install());

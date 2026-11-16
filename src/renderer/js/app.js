@@ -309,6 +309,16 @@ function computeView() {
     return view;
   }
 
+  if (state.gpu?.problem) {
+    Object.assign(view, {
+      title: 'Не установлен драйвер видеокарты', mode: 'paused', bar: 100, pct: '',
+      info: `Без драйвера${state.gpu.problem.vendorName ? ` ${esc(state.gpu.problem.vendorName)}` : ''} GTA не сможет запуститься`,
+      actions: [['download', 'Как установить', 'driver'], ['refresh-cw', 'Проверить', 'gpu-recheck']],
+    });
+    Object.assign(view.button, { label: 'Войти в игру', icon: 'play', action: 'launch', disabled: state.launching });
+    return view;
+  }
+
   Object.assign(view, {
     title: 'Игра готова к запуску', pct: '100%', bar: 100,
     info: state.settings.safeMode
@@ -396,6 +406,12 @@ async function runAction(action) {
     case 'launch':
       await launch();
       break;
+    case 'driver':
+      await showDriverHelp(state.gpu?.problem);
+      break;
+    case 'gpu-recheck':
+      await recheckGpu(true);
+      break;
     case 'recheck':
       state.game = null;
       renderStatus();
@@ -465,20 +481,39 @@ async function launch() {
   state.launching = true;
   renderStatus();
   const server = selectedServer();
-  let res = await api.game.launch(server.id);
-  if (res.needPrereqs) {
-    state.launching = false;
-    renderStatus();
-    const choice = await askPrereqs(res.needPrereqs);
-    if (choice === 'cancel') return;
-    if (choice === 'install') {
-      const r = await installPrereqs();
-      if (!r.ok) return;
+  const opts = {};
+  let res;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    res = await api.game.launch(server.id, opts);
+    if (res.needDriver) {
+      state.gpu = { ...(state.gpu || {}), problem: res.needDriver };
+      state.launching = false;
+      renderStatus();
+      const choice = await showDriverHelp(res.needDriver, { forLaunch: true });
+      if (choice === 'skip') opts.skipGpu = true;
+      else if (choice !== 'recheck') return;
+      state.launching = true;
+      renderStatus();
+      continue;
     }
-    state.launching = true;
-    renderStatus();
-    res = await api.game.launch(server.id, { skipPrereqs: true });
+    if (res.needPrereqs) {
+      state.launching = false;
+      renderStatus();
+      const choice = await askPrereqs(res.needPrereqs);
+      if (choice === 'cancel') return;
+      if (choice === 'install') {
+        const r = await installPrereqs();
+        if (!r.ok) return;
+      }
+      opts.skipPrereqs = true;
+      state.launching = true;
+      renderStatus();
+      continue;
+    }
+    break;
   }
+  if (res.needDriver || res.needPrereqs) { state.launching = false; renderStatus(); return; }
+  if (opts.skipGpu === undefined && state.gpu?.problem) { state.gpu.problem = null; }
   state.launching = false;
   if (!res.ok) {
     toast({ title: 'Не удалось запустить игру', text: res.error, type: 'error', timeout: 8000 });
@@ -509,9 +544,74 @@ function bindStatus() {
     renderStatus();
   });
   api.game.onExited(({ seconds, neverStarted }) => {
-    if (neverStarted || seconds < 120) showCrashHelp(neverStarted ? null : seconds);
+    if (!(neverStarted || seconds < 120)) return;
+    if (state.gpu?.problem) showDriverHelp(state.gpu.problem);
+    else showCrashHelp(neverStarted ? null : seconds);
   });
   $('#fixBtn').addEventListener('click', openFix);
+}
+
+// ═════════════════ Драйвер видеокарты ═════════════════
+async function recheckGpu(withToast) {
+  state.gpu = await api.gpu.check(true);
+  renderStatus();
+  if (withToast) {
+    toast(state.gpu.problem
+      ? { title: 'Драйвер всё ещё не найден', text: 'После установки драйвера перезагрузите компьютер.', type: 'warn' }
+      : { title: 'Драйвер видеокарты установлен', text: 'Можно заходить в игру!', type: 'success' });
+  }
+  return state.gpu;
+}
+
+function showDriverHelp(problem, { forLaunch = false } = {}) {
+  if (!problem) return Promise.resolve('cancel');
+  const vendor = problem.vendorName || 'вашей видеокарты';
+  return new Promise((resolve) => {
+    let choice = 'cancel';
+    const dlg = openModal(`
+      <div class="modal__head">
+        <div class="modal__icon modal__icon--warn">${icon('triangle-alert')}</div>
+        <div>
+          <div class="modal__title">Не установлен драйвер видеокарты</div>
+          <div class="modal__sub">Из-за этого игра вылетает при запуске</div>
+        </div>
+        <button class="icon-btn modal__x" data-close>${icon('x')}</button>
+      </div>
+      <div class="modal__body">
+        <p class="driver-lead">Windows сейчас работает через <b>«${esc(problem.adapter)}»</b> — это временная заглушка без аппаратного Direct3D. GTA не может создать графику и закрывается. Нужно установить драйвер <b>${esc(vendor)}</b>.</p>
+        <div class="crash-steps">
+          <button class="card crash-step" data-do="site">
+            <span class="crash-step__n">1</span>
+            <span><span class="crash-step__t">Скачать драйвер ${esc(problem.vendorName || '')} с официального сайта</span><span class="crash-step__d">${esc(problem.url.replace(/^https?:\/\//, ''))}</span></span>
+          </button>
+          <button class="card crash-step" data-do="wu">
+            <span class="crash-step__n">2</span>
+            <span><span class="crash-step__t">Или через Центр обновления Windows</span><span class="crash-step__d">«Дополнительные параметры → Необязательные обновления → Обновления драйверов» — отметьте драйвер видеокарты. Подходит, если сайт производителя не открывается</span></span>
+          </button>
+          <div class="card crash-step crash-step--static">
+            <span class="crash-step__n">3</span>
+            <span><span class="crash-step__t">Перезагрузите компьютер</span><span class="crash-step__d">После перезагрузки нажмите «Проверить снова» — лаунчер убедится, что драйвер на месте</span></span>
+          </div>
+        </div>
+      </div>
+      <div class="modal__foot">
+        ${forLaunch ? '<button class="btn" data-choice="skip">Запустить всё равно</button>' : ''}
+        <button class="btn btn--primary" data-choice="recheck">${icon('refresh-cw')}Проверить снова</button>
+      </div>`, { onClose: () => resolve(choice) });
+    dlg.addEventListener('click', async (e) => {
+      const d = e.target.closest('[data-do]');
+      if (d?.dataset.do === 'site') api.app.open(problem.url);
+      if (d?.dataset.do === 'wu') api.app.openWindowsUpdate();
+      const c = e.target.closest('[data-choice]');
+      if (!c) return;
+      if (c.dataset.choice === 'recheck') {
+        const g = await recheckGpu(true);
+        if (g.problem) return; // остаёмся в окне
+        choice = forLaunch ? 'recheck' : 'cancel';
+      } else choice = c.dataset.choice;
+      closeModal();
+    });
+  });
 }
 
 // ═════════════════ Помощь при вылете ═════════════════
@@ -652,6 +752,7 @@ async function runFix(options) {
     </div>
     <div class="modal__foot">
       <button class="btn" data-report>${icon('newspaper')}Отчёт для поддержки</button>
+      ${res.driver ? `<button class="btn btn--primary" data-driver>${icon('download')}Установить драйвер</button>` : ''}
       <button class="btn" data-close>Закрыть</button>
       ${res.needReinstall
         ? `<button class="btn btn--primary" data-reinstall>${icon('download')}Перекачать игру</button>`
@@ -664,6 +765,7 @@ async function runFix(options) {
   });
   dlg.querySelector('[data-play]')?.addEventListener('click', () => { closeModal(); runAction('launch'); });
   dlg.querySelector('[data-report]')?.addEventListener('click', () => { closeModal(); makeReport(); });
+  dlg.querySelector('[data-driver]')?.addEventListener('click', () => { closeModal(); showDriverHelp(res.driver); });
 }
 
 async function openFolder() {
@@ -1128,6 +1230,7 @@ async function boot() {
   setInterval(pollServers, 15000);
 
   await refreshGame(true);
+  api.gpu.check().then((g) => { state.gpu = g; renderStatus(); }).catch(() => {});
   if (!state.settings.nickname) showWelcome();
 
   if (state.settings.autoUpdateGame && state.game.needsUpdate && !state.running) {
