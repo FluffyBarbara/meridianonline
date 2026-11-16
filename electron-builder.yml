@@ -1,0 +1,46 @@
+# Сборка установщика лаунчера (Windows, NSIS) и публикация в GitHub Releases.
+appId: online.meridian.launcher
+productName: Meridian Online
+copyright: Copyright © 2026 Meridian Online
+
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - package.json
+  - src/**/*
+  - "!src/renderer/js/mock.js"
+  - content/launcher.json
+  - game/manifest.json
+  - "!**/node_modules/7zip-bin/linux/**"
+  - "!**/node_modules/7zip-bin/mac/**"
+  - "!**/node_modules/7zip-bin/win/ia32/**"
+  - "!**/node_modules/7zip-bin/win/arm64/**"
+
+# 7-Zip должен лежать вне asar, иначе его нельзя запустить
+asarUnpack:
+  - "**/node_modules/7zip-bin/win/**"
+
+win:
+  icon: build/icon.png
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: MeridianOnline-Setup-${version}.${ext}
+
+nsis:
+  # Установка в один клик в профиль пользователя — обновления ставятся без запроса прав администратора
+  oneClick: true
+  perMachine: false
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: Meridian Online
+  uninstallDisplayName: Meridian Online Launcher
+  deleteAppDataOnUninstall: false
+
+publish:
+  - provider: github
+    owner: FluffyBarbara
+    repo: meridianonline
+    releaseType: release
