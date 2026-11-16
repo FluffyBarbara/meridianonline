@@ -853,3 +853,19 @@ input { font: inherit; color: inherit; }
 }
 .tab.is-soon { color: var(--text-3); }
 .tab.is-soon:hover { color: var(--text-2); }
+
+/* фикс игры */
+.sidebar__links { display: inline-flex; gap: 14px; }
+.fix-always { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; padding: 4px 0 16px; border-bottom: 1px solid var(--line); }
+.fix-always__item { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; color: var(--text-2); line-height: 1.45; }
+.fix-always__item .ico { width: 15px; height: 15px; color: var(--green); margin-top: 1px; }
+.fix-opts { display: flex; flex-direction: column; gap: 4px; padding-top: 10px; }
+.fix-opt { display: flex; gap: 14px; align-items: center; padding: 8px 0; cursor: pointer; }
+.fix-result { display: flex; flex-direction: column; gap: 8px; }
+.fix-step { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: 12px; background: rgba(255, 255, 255, 0.035); border: 1px solid var(--line); }
+.fix-step > .ico { width: 18px; height: 18px; margin-top: 1px; color: var(--green); }
+.fix-step--warn > .ico { color: var(--amber); }
+.fix-step--fail > .ico { color: var(--red); }
+.fix-step--skip > .ico { color: var(--text-3); }
+.fix-step__title { font-weight: 800; font-size: 13.5px; }
+.fix-step__text { margin-top: 3px; font-size: 12.5px; color: var(--text-2); line-height: 1.45; }

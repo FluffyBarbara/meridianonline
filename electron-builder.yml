@@ -13,6 +13,7 @@ files:
   - "!src/renderer/js/mock.js"
   - content/launcher.json
   - game/manifest.json
+  - game/files.json
   - "!**/node_modules/7zip-bin/linux/**"
   - "!**/node_modules/7zip-bin/mac/**"
   - "!**/node_modules/7zip-bin/win/ia32/**"

@@ -36,6 +36,8 @@ contextBridge.exposeInMainWorld('meridian', {
     reinstall: () => ipcRenderer.invoke('game:reinstall'),
     onProgress: on('game:progress'),
     onRunning: on('game:running'),
+    onExited: on('game:exited'),
+    fix: (options) => ipcRenderer.invoke('game:fix', options),
   },
   prereqs: {
     check: () => ipcRenderer.invoke('prereqs:check'),

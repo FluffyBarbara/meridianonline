@@ -30,7 +30,9 @@ function paintStaticIcons() {
   $('#heroPrev').innerHTML = icon('chevron-left');
   $('#heroNext').innerHTML = icon('chevron-right');
   $('#openFolderBtn').innerHTML = `${icon('folder-open')}Папка игры`;
+  $('#fixBtn').innerHTML = `${icon('wrench')}Фикс игры`;
   const rows = {
+    fix: ['shield-check', 'Фикс игры — если вылетает или не запускается'],
     'open-folder': ['folder-open', 'Открыть папку игры'],
     verify: ['wrench', 'Переустановить игру'],
     settings: ['settings', 'Настройки лаунчера'],
@@ -184,7 +186,7 @@ function showWelcome() {
 }
 
 // ═════════════════ Статус и главная кнопка ═════════════════
-const BUSY = ['preparing', 'downloading', 'verifying', 'extracting', 'prereq-download', 'prereq-install'];
+const BUSY = ['preparing', 'downloading', 'verifying', 'extracting', 'prereq-download', 'prereq-install', 'fixing'];
 
 function computeView() {
   const g = state.game;
@@ -229,6 +231,15 @@ function computeView() {
       view.pct = `${Math.round(p.percent || 0)}%`;
       view.bar = p.percent || 0;
       view.info = p.file || '';
+    } else if (p.state === 'fixing') {
+      view.title = 'Фикс игры';
+      view.info = esc(p.step || '');
+      if (p.percent != null) {
+        view.pct = `${Math.round(p.percent)}%`;
+        view.bar = p.percent;
+      } else view.mode = 'indeterminate';
+      view.button.label = 'Фикс…';
+      view.button.icon = 'wrench';
     } else if (p.state === 'prereq-download') {
       view.title = 'Загрузка компонентов Windows';
       view.pct = `${Math.round(p.percent || 0)}%`;
@@ -494,6 +505,108 @@ function bindStatus() {
     state.running = running;
     renderStatus();
   });
+  api.game.onExited(({ seconds, neverStarted }) => {
+    if (neverStarted || seconds < 120) {
+      toast({
+        title: neverStarted ? 'Игра не запустилась' : `Игра закрылась через ${seconds} с`,
+        text: 'Если это был вылет — нажмите «Фикс игры», лаунчер попробует всё починить.',
+        type: 'warn',
+        timeout: 15000,
+        action: { label: 'Фикс игры', onClick: openFix },
+      });
+    }
+  });
+  $('#fixBtn').addEventListener('click', openFix);
+}
+
+// ═════════════════ Фикс игры ═════════════════
+const FIX_STATUS_ICON = { ok: 'circle-check', warn: 'triangle-alert', fail: 'triangle-alert', skip: 'info' };
+
+function openFix() {
+  if (state.running) { toast({ title: 'Сначала закройте игру', type: 'warn' }); return; }
+  if (state.progress && BUSY.includes(state.progress.state)) { toast({ title: 'Дождитесь окончания текущей операции', type: 'warn' }); return; }
+  if (!state.game?.installed) { toast({ title: 'Игра ещё не установлена', text: 'Нажмите «Установить».', type: 'warn' }); return; }
+  const opts = [
+    ['resetSettings', 'Сбросить настройки графики GTA', 'Самая частая причина вылетов при запуске. Разрешение и графику придётся выставить заново'],
+    ['components', 'Переустановить DirectX, Visual C++ и DirectPlay', 'Скачает официальные установщики Microsoft (~20 МБ)'],
+    ['defender', 'Добавить папку игры в исключения Защитника Windows', 'Защитник иногда удаляет samp.dll и моды, считая их подозрительными'],
+  ];
+  const dlg = openModal(`
+    <div class="modal__head">
+      <div class="modal__icon">${icon('wrench')}</div>
+      <div>
+        <div class="modal__title">Фикс игры</div>
+        <div class="modal__sub">Если игра вылетает, не запускается или зависает</div>
+      </div>
+      <button class="icon-btn modal__x" data-close>${icon('x')}</button>
+    </div>
+    <div class="modal__body">
+      <div class="fix-always">
+        ${['Закрыть зависшие процессы игры', 'Проверить все файлы игры и найти повреждённые', 'Отключить посторонние моды и читы, которых нет в сборке', 'Снять режимы совместимости Windows и оптимизацию во весь экран']
+          .map((t) => `<div class="fix-always__item">${icon('check')}${t}</div>`).join('')}
+      </div>
+      <div class="fix-opts">
+        ${opts.map(([k, t, d]) => `
+          <label class="fix-opt">
+            <span class="switch"><input type="checkbox" data-opt="${k}" checked><span></span></span>
+            <span><span class="set-row__label" style="display:block">${t}</span><span class="set-row__desc" style="display:block">${d}</span></span>
+          </label>`).join('')}
+      </div>
+      <p class="prereq-note">Для компонентов и Защитника Windows один раз попросит права администратора.</p>
+    </div>
+    <div class="modal__foot">
+      <button class="btn" data-close>Отмена</button>
+      <button class="btn btn--primary" data-run>${icon('wrench')}Починить игру</button>
+    </div>`);
+  dlg.querySelector('[data-run]').addEventListener('click', async () => {
+    const options = {};
+    dlg.querySelectorAll('[data-opt]').forEach((i) => { options[i.dataset.opt] = i.checked; });
+    closeModal();
+    await runFix(options);
+  });
+}
+
+async function runFix(options) {
+  state.progress = { state: 'fixing', step: 'Подготовка…' };
+  renderStatus();
+  const res = await api.game.fix(options);
+  state.progress = null;
+  await refreshGame(true);
+  if (!res.steps) {
+    toast({ title: 'Фикс не выполнен', text: res.error || '', type: 'error', timeout: 8000 });
+    return;
+  }
+  const dlg = openModal(`
+    <div class="modal__head">
+      <div class="modal__icon">${icon(res.needReinstall ? 'triangle-alert' : 'circle-check')}</div>
+      <div>
+        <div class="modal__title">${res.needReinstall ? 'Нужно перекачать игру' : 'Фикс завершён'}</div>
+        <div class="modal__sub">${res.needReinstall ? `Найдены повреждённые или удалённые файлы: ${res.damaged}` : 'Запустите игру ещё раз'}</div>
+      </div>
+      <button class="icon-btn modal__x" data-close>${icon('x')}</button>
+    </div>
+    <div class="modal__body">
+      <div class="fix-result">
+        ${res.steps.map((s) => `
+          <div class="fix-step fix-step--${s.status}">
+            ${icon(FIX_STATUS_ICON[s.status] || 'info')}
+            <div><div class="fix-step__title">${esc(s.title)}</div><div class="fix-step__text">${esc(s.text)}</div></div>
+          </div>`).join('')}
+      </div>
+      ${res.needReinstall ? '<p class="prereq-note">Повреждённые файлы восстанавливаются перекачкой сборки (около 2 ГБ). Скорее всего, их удалил антивирус — после перекачки он больше не помешает, если вы добавили папку в исключения.</p>' : ''}
+    </div>
+    <div class="modal__foot">
+      <button class="btn" data-close>Закрыть</button>
+      ${res.needReinstall
+        ? `<button class="btn btn--primary" data-reinstall>${icon('download')}Перекачать игру</button>`
+        : `<button class="btn btn--primary" data-play>${icon('play')}Войти в игру</button>`}
+    </div>`);
+  dlg.querySelector('[data-reinstall]')?.addEventListener('click', async () => {
+    closeModal();
+    await api.game.reinstall();
+    runAction('install');
+  });
+  dlg.querySelector('[data-play]')?.addEventListener('click', () => { closeModal(); runAction('launch'); });
 }
 
 async function openFolder() {
@@ -693,6 +806,7 @@ function bindTabs() {
     if (b.dataset.action === 'open-folder') openFolder();
     if (b.dataset.action === 'settings') openSettings();
     if (b.dataset.action === 'verify') reinstallGame();
+    if (b.dataset.action === 'fix') openFix();
   }));
 }
 
@@ -739,7 +853,14 @@ function openSettings() {
             <div class="set-row__label">Версия сборки</div>
             <div class="set-row__desc">${g.installed ? `Установлена ${esc(g.installedVersion || '—')}` : 'Не установлена'}${g.latestVersion && g.published ? ` · последняя ${esc(g.latestVersion)}` : ''}</div>
           </div>
-          <button class="btn btn--sm" data-set="reinstall">${icon('wrench')}Переустановить</button>
+          <button class="btn btn--sm" data-set="reinstall">${icon('rotate-ccw')}Переустановить</button>
+        </div>
+        <div class="set-row">
+          <div class="set-row__text">
+            <div class="set-row__label">Фикс игры</div>
+            <div class="set-row__desc">Если игра вылетает или не запускается: проверка файлов, сброс настроек, компоненты Windows</div>
+          </div>
+          <button class="btn btn--sm" data-set="fix">${icon('wrench')}Починить</button>
         </div>
         <div class="set-row">
           <div class="set-row__text">
@@ -810,6 +931,7 @@ function openSettings() {
       if (act === 'open') openFolder();
       if (act === 'choose') { closeModal(); await runAction('choose-dir'); openSettings(); }
       if (act === 'reinstall') { closeModal(); reinstallGame(); }
+      if (act === 'fix') { closeModal(); openFix(); }
       if (act === 'prereqs') { closeModal(); await installPrereqs(); }
       if (act === 'check-update') { api.updater.check(); b.querySelector('.ico')?.classList.add('spin'); }
     }

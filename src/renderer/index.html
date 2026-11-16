@@ -58,7 +58,10 @@
 
       <div class="sidebar__foot">
         <span id="versionLabel">v—</span>
-        <button class="link-btn" id="openFolderBtn" title="Открыть папку игры"></button>
+        <span class="sidebar__links">
+          <button class="link-btn" id="fixBtn" title="Починить игру, если она вылетает или не запускается"></button>
+          <button class="link-btn" id="openFolderBtn" title="Открыть папку игры"></button>
+        </span>
       </div>
     </aside>
 
@@ -140,6 +143,7 @@
                 <div class="contacts" id="contacts"></div>
                 <div class="card diag">
                   <div class="card__title"><span class="card__accent"></span>Быстрые действия</div>
+                  <button class="row-btn" data-action="fix"></button>
                   <button class="row-btn" data-action="open-folder"></button>
                   <button class="row-btn" data-action="verify"></button>
                   <button class="row-btn" data-action="settings"></button>

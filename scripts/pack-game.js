@@ -200,8 +200,15 @@ async function upload(version, files, token) {
   Object.assign(manifest, { version, unpackedSize, archives, publishedAt: new Date().toISOString() });
   await fsp.writeFile(MANIFEST, JSON.stringify(manifest, null, 2) + '\n');
 
+  // Эталонный список файлов для «Фикса игры»
+  console.log('\n▶ Список файлов для проверки целостности');
+  const { makeFileList } = require('./make-filelist');
+  const fileList = await makeFileList(src, version);
+  await fsp.writeFile(path.join(ROOT, 'game', 'files.json'), JSON.stringify(fileList) + '\n');
+  console.log(`  ${fileList.files.length} файлов`);
+
   console.log(`\n✔ Готово. Тома лежат в ${OUT}`);
-  console.log('  game/manifest.json обновлён — закоммитьте его в ветку main.');
+  console.log('  game/manifest.json и game/files.json обновлены — закоммитьте их в ветку main.');
   if (!o.upload && !o['base-url']) {
     console.log(`  Загрузите тома в релиз с тегом game-${version} (отметьте «Set as a pre-release»).`);
   }

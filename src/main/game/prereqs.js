@@ -39,6 +39,7 @@ const CATALOG = {
     url: 'https://aka.ms/vs/17/release/vc_redist.x86.exe',
     file: 'vc_redist_2015-2022_x86.exe',
     args: ['/install', '/quiet', '/norestart'],
+    repairArgs: ['/repair', '/quiet', '/norestart'],
   },
   vc2013: {
     name: 'Visual C++ 2013 (x86)',
@@ -200,14 +201,20 @@ class Prereqs extends EventEmitter {
     return target;
   }
 
-  /** Запуск установщиков одним окном UAC через PowerShell. */
-  runElevated(jobs) {
+  /**
+   * Запуск установщиков одним окном UAC через PowerShell.
+   * extra — дополнительные команды PowerShell под тем же запросом прав: [{ id, ps }].
+   */
+  runElevated(jobs, extra = []) {
     const resultFile = path.join(this.cacheDir, `result-${Date.now()}.json`);
     const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
     const lines = ['$r = @{}'];
     for (const j of jobs) {
       const args = j.args.map(q).join(',');
       lines.push(`try { $p = Start-Process -FilePath ${q(j.path)} -ArgumentList ${args} -WindowStyle Hidden -Wait -PassThru; $r[${q(j.id)}] = $p.ExitCode } catch { $r[${q(j.id)}] = -1 }`);
+    }
+    for (const x of extra) {
+      lines.push(`try { ${x.ps}; $r[${q(x.id)}] = 0 } catch { $r[${q(x.id)}] = -1 }`);
     }
     lines.push(`$r | ConvertTo-Json | Set-Content -LiteralPath ${q(resultFile)} -Encoding UTF8`);
     const inner = Buffer.from(lines.join('\n'), 'utf16le').toString('base64');
@@ -227,13 +234,16 @@ class Prereqs extends EventEmitter {
    * Скачать и установить недостающие компоненты.
    * @returns {{ok:boolean, installed:string[], failed:string[], declined?:boolean, reboot?:boolean}}
    */
-  async install(manifest) {
+  async install(manifest, { force = false, extra = [] } = {}) {
     if (this.busy) return { ok: false, error: 'Установка компонентов уже идёт' };
-    if (process.platform !== 'win32') return { ok: true, installed: [], failed: [] };
+    if (process.platform !== 'win32') return { ok: true, installed: [], failed: [], extra: {} };
     this.busy = true;
     try {
-      const need = await this.missing(manifest);
-      if (!need.length) return { ok: true, installed: [], failed: [] };
+      const status = await this.check(manifest);
+      // force — переустановить/починить всё из списка (для «Фикса игры»)
+      const need = force ? status : status.filter((p) => !p.installed);
+      if (!need.length && !extra.length) return { ok: true, installed: [], failed: [], extra: {} };
+      const wasInstalled = new Set(status.filter((p) => p.installed).map((p) => p.id));
       const full = resolveList(manifest).filter((p) => need.some((n) => n.id === p.id));
 
       await fsp.mkdir(this.cacheDir, { recursive: true });
@@ -245,26 +255,31 @@ class Prereqs extends EventEmitter {
           continue;
         }
         this.emitState('prereq-download', { name: p.name, index: i + 1, count: full.length, percent: 0 });
-        jobs.push({ id: p.id, path: await this.download(p, i + 1, full.length), args: p.args });
+        const args = force && wasInstalled.has(p.id) && p.repairArgs ? p.repairArgs : p.args;
+        jobs.push({ id: p.id, path: await this.download(p, i + 1, full.length), args });
       }
 
       this.emitState('prereq-install', { names: full.map((p) => p.name) });
-      const { declined, codes } = await this.runElevated(jobs);
-      if (declined) return { ok: false, declined: true, installed: [], failed: full.map((p) => p.name) };
+      const { declined, codes } = await this.runElevated(jobs, extra);
+      if (declined) return { ok: false, declined: true, installed: [], failed: full.map((p) => p.name), extra: {} };
+      for (const p of need) this.known.delete(p.id);
 
       const after = await this.check(manifest);
       const failed = after.filter((p) => !p.installed && need.some((n) => n.id === p.id)).map((p) => p.name);
       const reboot = Object.values(codes).some((c) => c === 3010 || c === 1641);
-      const badCodes = Object.entries(codes).filter(([, c]) => !OK_CODES.has(Number(c)));
+      const extraIds = new Set(extra.map((x) => x.id));
+      const extraCodes = Object.fromEntries(Object.entries(codes).filter(([id]) => extraIds.has(id)));
+      const badCodes = Object.entries(codes).filter(([id, c]) => !extraIds.has(id) && !OK_CODES.has(Number(c)));
       return {
         ok: failed.length === 0,
         installed: full.map((p) => p.name).filter((n) => !failed.includes(n)),
         failed,
         reboot,
         codes: badCodes.length ? Object.fromEntries(badCodes) : undefined,
+        extra: extraCodes,
       };
     } catch (err) {
-      return { ok: false, error: err.message, installed: [], failed: [] };
+      return { ok: false, error: err.message, installed: [], failed: [], extra: {} };
     } finally {
       this.busy = false;
       this.emitState('prereq-done');

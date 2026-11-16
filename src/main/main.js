@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu, nativeImage } = require('electron');
 
+const log = require('electron-log/main');
 const config = require('./config');
 const settings = require('./settings');
 const updater = require('./updater');
@@ -12,6 +13,7 @@ const { loadRemoteJson } = require('./content');
 const { queryServer } = require('./game/query');
 const { GameInstaller } = require('./game/installer');
 const { Prereqs } = require('./game/prereqs');
+const { GameFixer } = require('./game/fixer');
 const { launchGame, isInstalled, isGameRunning, validateNickname } = require('./game/launch');
 
 const DEV = process.argv.includes('--dev');
@@ -27,6 +29,7 @@ let gameRunning = false;
 
 const installer = new GameInstaller();
 const prereqs = new Prereqs(path.join(app.getPath('userData'), 'redist'));
+const fixer = new GameFixer({ prereqs, documentsDir: app.getPath('documents') });
 
 // ───────────────────────── Один экземпляр ─────────────────────────
 if (!app.requestSingleInstanceLock()) {
@@ -165,6 +168,18 @@ async function getManifest(force = false) {
   return manifestCache;
 }
 
+/** Эталонный список файлов сборки (для «Фикса игры»). null — если не совпадает с версией сборки. */
+async function getFileList(manifest) {
+  try {
+    const { data } = await loadRemoteJson({
+      urls: config.GAME_FILES_URLS, cacheName: 'files', bundled: 'game/files.json',
+    });
+    return data && data.version === manifest.version ? data : null;
+  } catch {
+    return null;
+  }
+}
+
 function cmpVersion(a, b) {
   const pa = String(a || '0').split(/[.-]/).map((x) => parseInt(x, 10) || 0);
   const pb = String(b || '0').split(/[.-]/).map((x) => parseInt(x, 10) || 0);
@@ -245,6 +260,7 @@ let watchTimer = null;
 function watchGame(manifest, server) {
   clearInterval(watchTimer);
   let seen = false;
+  let seenAt = 0;
   const startedAt = Date.now();
   gameRunning = true;
   gameSession = { server, startedAt };
@@ -252,15 +268,19 @@ function watchGame(manifest, server) {
   updatePresence();
   watchTimer = setInterval(async () => {
     const running = await isGameRunning(manifest);
-    if (running) seen = true;
-    const gaveUp = !seen && Date.now() - startedAt > 45000;
+    if (running && !seen) { seen = true; seenAt = Date.now(); }
+    const gaveUp = !seen && Date.now() - startedAt > 60000;
     if ((seen && !running) || gaveUp) {
       clearInterval(watchTimer);
       gameRunning = false;
       gameSession = null;
       send('game:running', false);
       updatePresence();
-      if (settings.get('afterLaunch') !== 'keep') showMain();
+      // Игра закрылась почти сразу — скорее всего вылет: подскажем «Фикс игры»
+      const played = seen ? Math.round((Date.now() - seenAt) / 1000) : 0;
+      send('game:exited', { seconds: played, neverStarted: !seen });
+      // Не разворачиваем лаунчер, если процесс так и не нашли: это могло бы украсть фокус у игры
+      if (seen && settings.get('afterLaunch') !== 'keep') showMain();
     }
   }, 3000);
 }
@@ -320,6 +340,12 @@ function registerIpc() {
       const missing = await prereqs.missing(manifest);
       if (missing.length) return { ok: false, needPrereqs: missing.map((p) => p.name) };
     }
+    // Убираем окно лаунчера ДО запуска: если игра потеряет фокус во время загрузки,
+    // samp.dll падает (ShowCursor на ещё не созданном устройстве Direct3D).
+    const after = settings.get('afterLaunch');
+    if (win && after !== 'keep') {
+      if (after === 'hide' || after === 'close') { createTray(); win.hide(); } else win.minimize();
+    }
     try {
       await launchGame({
         gameDir: settings.get('gameDir'),
@@ -328,17 +354,30 @@ function registerIpc() {
         manifest,
       });
     } catch (err) {
+      if (win && after !== 'keep') showMain();
       return { ok: false, error: err.message };
     }
     watchGame(manifest, server);
-    const after = settings.get('afterLaunch');
-    setTimeout(() => {
-      if (!win) return;
-      if (after === 'minimize') win.minimize();
-      else if (after === 'hide') { createTray(); win.hide(); }
-      else if (after === 'close') app.quit();
-    }, 1200);
+    if (after === 'close') setTimeout(() => app.quit(), 3000);
     return { ok: true };
+  });
+
+  ipcMain.handle('game:fix', async (_e, options = {}) => {
+    if (installer.busy || prereqs.busy) return { ok: false, error: 'Дождитесь окончания установки' };
+    if (gameRunning) return { ok: false, error: 'Сначала закройте игру' };
+    const manifest = await getManifest(true);
+    const gameDir = settings.get('gameDir');
+    if (!isInstalled(gameDir, manifest)) return { ok: false, error: 'Игра не установлена — нажмите «Установить»' };
+    const fileList = await getFileList(manifest);
+    const result = await fixer.run({
+      gameDir,
+      manifest,
+      fileList,
+      nickname: settings.get('nickname'),
+      options: { components: options.components !== false, defender: options.defender !== false, resetSettings: options.resetSettings !== false },
+    });
+    log.info('[fix]', JSON.stringify(result));
+    return result;
   });
 
   ipcMain.handle('prereqs:check', async () => prereqs.check(await getManifest()));
@@ -397,7 +436,10 @@ function registerIpc() {
   ipcMain.handle('updater:status', () => updater.status);
 
   installer.on('progress', (p) => send('game:progress', p));
-  prereqs.on('progress', (p) => send('game:progress', p.state === 'prereq-done' ? { state: 'idle' } : p));
+  prereqs.on('progress', (p) => {
+    if (p.state === 'prereq-done') { if (!fixer.busy) send('game:progress', { state: 'idle' }); } else send('game:progress', p);
+  });
+  fixer.on('progress', (p) => send('game:progress', p));
   updater.on('status', (s) => {
     send('updater:status', s);
     if (splash && !splash.isDestroyed()) splash.webContents.send('updater:status', s);

@@ -48,6 +48,18 @@ const api = {
     reinstall: async () => true,
     onProgress: (cb) => { progressCb = cb; return () => {}; },
     onRunning: noop,
+    onExited: noop,
+    fix: async () => ({
+      ok: true, needReinstall: false, damaged: 0, steps: [
+        { id: 'kill', title: 'Зависшие процессы', status: 'ok', text: 'Закрыто: gta_sa.exe' },
+        { id: 'files', title: 'Файлы игры', status: 'ok', text: 'Все 1214 файлов в порядке' },
+        { id: 'mods', title: 'Посторонние моды', status: 'warn', text: 'Отключено 2: d3d9.dll, cleo/aimbot.cs. Они перенесены в папку _disabled_mods' },
+        { id: 'settings', title: 'Настройки графики GTA', status: 'ok', text: 'Сброшены (старые сохранены рядом как gta_sa.set.backup)' },
+        { id: 'compat', title: 'Режимы совместимости', status: 'ok', text: 'Сняты: gta_sa.exe: ~ WINXPSP3 RUNASADMIN. Оптимизация во весь экран отключена' },
+        { id: 'components', title: 'DirectX, Visual C++, DirectPlay', status: 'ok', text: 'Переустановлены: DirectX 9.0c, Visual C++ 2010 (x86)' },
+        { id: 'defender', title: 'Защитник Windows', status: 'ok', text: 'Папка игры добавлена в исключения' },
+      ],
+    }),
   },
   prereqs: {
     check: async () => [{ id: 'directx', name: 'DirectX 9.0c', installed: false }, { id: 'vc2015', name: 'Visual C++ 2015–2022 (x86)', installed: true }],
