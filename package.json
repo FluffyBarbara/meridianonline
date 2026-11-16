@@ -1,7 +1,7 @@
 {
   "name": "meridian-online-launcher",
   "productName": "Meridian Online",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Официальный лаунчер Meridian Online (CRMP)",
   "main": "src/main/main.js",
   "author": "Meridian Online",
@@ -21,7 +21,8 @@
   "dependencies": {
     "7zip-bin": "^5.2.0",
     "electron-log": "^5.4.3",
-    "electron-updater": "^6.6.2"
+    "electron-updater": "^6.6.2",
+    "koffi": "^2.9.0"
   },
   "devDependencies": {
     "electron": "^38.4.0",

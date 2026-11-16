@@ -86,6 +86,18 @@ async function launchGame({ gameDir, nickname, server, manifest }) {
   return { exe: run.exe, args };
 }
 
+/** PID процесса игры или null (Windows: tasklist). */
+function getGamePid(manifest) {
+  const proc = launchConfig(manifest).process;
+  return new Promise((resolve) => {
+    if (process.platform !== 'win32' || !proc) return resolve(null);
+    execFile('tasklist', ['/FI', `IMAGENAME eq ${proc}`, '/NH', '/FO', 'CSV'], { windowsHide: true }, (err, out) => {
+      const m = !err && String(out).match(/^"[^"]+","(\d+)"/m);
+      resolve(m ? Number(m[1]) : null);
+    });
+  });
+}
+
 /** Запущен ли процесс игры (Windows: tasklist). */
 function isGameRunning(manifest) {
   const proc = launchConfig(manifest).process;
@@ -97,4 +109,4 @@ function isGameRunning(manifest) {
   });
 }
 
-module.exports = { launchGame, isInstalled, isGameRunning, validateNickname };
+module.exports = { launchGame, isInstalled, isGameRunning, getGamePid, validateNickname };

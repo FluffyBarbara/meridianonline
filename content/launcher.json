@@ -153,7 +153,18 @@
         "label": "Сайт проекта",
         "url": "https://meridian-rp.ru/"
       }
-    ]
+    ],
+    "presence": {
+      "enabled": true,
+      "defaultRegion": "Нижегородская обл.",
+      "showSpeed": true,
+      "showOnline": true,
+      "showCoords": false,
+      "iconBase": "https://raw.githubusercontent.com/FluffyBarbara/meridianonline/main/content/discord/",
+      "zones": [],
+      "vehicles": {}
+    },
+    "_help": "presence.zones: [{\"name\": \"Арзамас\", \"min\": [x1, y1], \"max\": [x2, y2], \"text\": \"текст пешком (необязательно)\", \"vehicleText\": \"текст в машине, {vehicle} {speed}\", \"icon\": \"walk\"}]. Самый маленький район, в который попал игрок, побеждает. showCoords: true — вместо района показывать координаты (чтобы разметить районы). vehicles: {\"404\": {\"name\": \"Копейка\", \"role\": \"taxi\", \"text\": \"Бомбит на {vehicle}\"}}."
   },
   "announcement": null
 }

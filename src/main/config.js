@@ -57,6 +57,8 @@ module.exports = {
   // (тогда его можно сменить без выпуска лаунчера). Здесь — запасное значение.
   DISCORD_CLIENT_ID: '1571910440064393296',
   DISCORD_LARGE_IMAGE: `${RAW_BASE}/build/icon.png`,
+  // Значки активности (content/discord/<ключ>.png)
+  DISCORD_ICON_BASE: `${RAW_BASE}/content/discord/`,
 
   // Как часто опрашивать сервер (онлайн / пинг), мс.
   SERVER_POLL_INTERVAL: 15000,
