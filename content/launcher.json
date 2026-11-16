@@ -9,20 +9,37 @@
       "tag": "Основной"
     }
   ],
-
   "links": {
-    "forum": "https://example.com/forum",
-    "shop": "https://example.com/donate",
-    "site": "https://example.com"
+    "forum": "https://forum.meridian-rp.ru/index.php",
+    "site": "https://meridian-rp.ru/",
+    "shop": ""
   },
-
   "socials": [
-    { "id": "telegram", "title": "Telegram", "subtitle": "Новости и объявления", "url": "https://t.me/" },
-    { "id": "vk", "title": "ВКонтакте", "subtitle": "Официальная группа", "url": "https://vk.com/" },
-    { "id": "tiktok", "title": "TikTok", "subtitle": "Клипы и моменты", "url": "https://www.tiktok.com/" },
-    { "id": "instagram", "title": "Instagram*", "subtitle": "Видео и обзоры", "url": "https://www.instagram.com/" }
+    {
+      "id": "telegram",
+      "title": "Telegram",
+      "subtitle": "Новости и объявления",
+      "url": "https://t.me/meridian_online"
+    },
+    {
+      "id": "vk",
+      "title": "ВКонтакте",
+      "subtitle": "Официальная группа",
+      "url": "https://vk.ru/meridian.play"
+    },
+    {
+      "id": "tiktok",
+      "title": "TikTok",
+      "subtitle": "Клипы и моменты",
+      "url": "https://www.tiktok.com/@meridian.online4"
+    },
+    {
+      "id": "instagram",
+      "title": "Instagram*",
+      "subtitle": "Видео и обзоры",
+      "url": "https://www.instagram.com/meridian_online_"
+    }
   ],
-
   "slides": [
     {
       "kicker": "Криминальная Россия · RolePlay",
@@ -46,12 +63,20 @@
       "button": null
     }
   ],
-
   "features": [
-    { "icon": "shield-check", "title": "ПДД", "text": "Соблюдай правила сервера", "url": "" },
-    { "icon": "gift", "title": "2X", "text": "Бонус каждый день", "url": "" }
+    {
+      "icon": "shield-check",
+      "title": "ПДД",
+      "text": "Соблюдай правила сервера",
+      "url": ""
+    },
+    {
+      "icon": "gift",
+      "title": "2X",
+      "text": "Бонус каждый день",
+      "url": ""
+    }
   ],
-
   "news": [
     {
       "title": "Новая работа: Дальнобойщик",
@@ -75,19 +100,60 @@
       "url": ""
     }
   ],
-
   "support": {
     "text": "Возникла проблема с игрой или лаунчером? Напишите нам — поможем.",
     "contacts": [
-      { "icon": "telegram", "title": "Поддержка в Telegram", "url": "https://t.me/" },
-      { "icon": "vk", "title": "Сообщения группы ВК", "url": "https://vk.com/" }
+      {
+        "icon": "telegram",
+        "title": "Telegram-канал",
+        "url": "https://t.me/meridian_online"
+      },
+      {
+        "icon": "vk",
+        "title": "Группа ВКонтакте",
+        "url": "https://vk.ru/meridian.play"
+      },
+      {
+        "icon": "globe",
+        "title": "Форум проекта",
+        "url": "https://forum.meridian-rp.ru/index.php"
+      },
+      {
+        "icon": "globe",
+        "title": "Сайт meridian-rp.ru",
+        "url": "https://meridian-rp.ru/"
+      }
     ],
     "faq": [
-      { "q": "Игра не запускается", "a": "Нажмите «Настройки → Переустановить». Убедитесь, что антивирус не удалил samp.dll / samp.exe и добавьте папку игры в исключения." },
-      { "q": "Как сменить ник?", "a": "Нажмите на блок «Аккаунт» вверху и введите новый ник в формате Имя_Фамилия." },
-      { "q": "Куда установлена игра?", "a": "Папку можно посмотреть и сменить в настройках лаунчера (значок шестерёнки)." }
+      {
+        "q": "Игра не запускается",
+        "a": "Нажмите «Настройки → Переустановить». Убедитесь, что антивирус не удалил samp.dll / samp.exe и добавьте папку игры в исключения."
+      },
+      {
+        "q": "Как сменить ник?",
+        "a": "Нажмите на блок «Аккаунт» вверху и введите новый ник в формате Имя_Фамилия."
+      },
+      {
+        "q": "Куда установлена игра?",
+        "a": "Папку можно посмотреть и сменить в настройках лаунчера (значок шестерёнки)."
+      }
     ]
   },
-
+  "discord": {
+    "clientId": "",
+    "launcherText": "Смотрит лаунчер",
+    "gameText": "Проводит время на Meridian Online | {server}",
+    "largeImage": "https://raw.githubusercontent.com/FluffyBarbara/meridianonline/main/build/icon.png",
+    "buttons": [
+      {
+        "label": "Скачать лаунчер",
+        "url": "https://github.com/FluffyBarbara/meridianonline/releases/latest"
+      },
+      {
+        "label": "Сайт проекта",
+        "url": "https://meridian-rp.ru/"
+      }
+    ]
+  },
   "announcement": null
 }

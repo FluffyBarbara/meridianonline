@@ -46,6 +46,11 @@ module.exports = {
   // Папка игры по умолчанию (на Windows). Можно сменить в настройках.
   DEFAULT_GAME_DIR_WIN: 'C:\\Games\\Meridian Online',
 
+  // Discord Rich Presence. Application ID лучше задавать в content/launcher.json → discord.clientId
+  // (тогда его можно сменить без выпуска лаунчера). Здесь — запасное значение.
+  DISCORD_CLIENT_ID: '',
+  DISCORD_LARGE_IMAGE: `${RAW_BASE}/build/icon.png`,
+
   // Как часто опрашивать сервер (онлайн / пинг), мс.
   SERVER_POLL_INTERVAL: 15000,
 

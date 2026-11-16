@@ -20,6 +20,8 @@ const DEFAULTS = {
   autoUpdateGame: true,
   // Анимированный фон
   animatedBackground: true,
+  // Показывать статус в Discord
+  discordPresence: true,
 };
 
 let cache = null;

@@ -101,3 +101,15 @@ npm run pack-game -- --src "E:\Meridian\Meridian Online" --version 1.0.0 --uploa
 Список `prerequisites` в `game/manifest.json` задаёт, какие компоненты Windows ставить: `directx`, `directplay`, `vc2008`, `vc2010`, `vc2012`, `vc2013`, `vc2015`.
 
 Блок `launch` в `game/manifest.json` определяет, какой exe запускать, с какими аргументами и что записывать в реестр. Плейсхолдеры: `{ip}`, `{port}`, `{nick}`, `{gameDir}`.
+
+## Статус в Discord
+
+Лаунчер показывает в профиле Discord «Играет в Meridian Online» с текстом «Смотрит лаунчер», а когда запущена игра — «Проводит время на Meridian Online | WHITE». Статус можно выключить в настройках лаунчера.
+
+Чтобы статус заработал, нужно приложение Discord (один раз):
+
+1. Откройте https://discord.com/developers/applications → **New Application**, назовите **Meridian Online**. Это имя Discord показывает в строке «Играет в …».
+2. Скопируйте **Application ID** на странице General Information.
+3. Впишите его в `content/launcher.json` → `discord.clientId` и залейте в `main`. Выпускать новую версию лаунчера не нужно: изменения подхватятся при следующем запуске и раз в 10 минут.
+
+Тексты, картинка и кнопки статуса тоже настраиваются в блоке `discord` этого файла. `{server}` в `gameText` заменяется названием сервера.

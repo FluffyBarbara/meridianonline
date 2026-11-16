@@ -844,3 +844,12 @@ input { font: inherit; color: inherit; }
 .prereq .ico { color: var(--accent-2); width: 16px; height: 16px; }
 .prereq .chip { margin-left: auto; color: var(--amber); background: rgba(255, 181, 71, 0.12); }
 .prereq-note { margin-top: 14px; color: var(--text-2); font-size: 12.5px; line-height: 1.55; }
+
+/* вкладка без ссылки — «скоро» */
+.tab__soon {
+  font-size: 9.5px; font-weight: 800; letter-spacing: 0.08em;
+  padding: 3px 6px; border-radius: 6px;
+  background: rgba(255, 181, 71, 0.14); color: var(--amber);
+}
+.tab.is-soon { color: var(--text-3); }
+.tab.is-soon:hover { color: var(--text-2); }
