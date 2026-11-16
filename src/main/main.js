@@ -20,6 +20,7 @@ const { checkGpu } = require('./gpu');
 const { launchGame, isInstalled, isGameRunning, getGamePid, validateNickname } = require('./game/launch');
 const { GameMemory } = require('./game/memory');
 const { PresenceEngine } = require('./game/presence');
+const cefpath = require('./game/cefpath');
 
 const DEV = process.argv.includes('--dev');
 const RENDERER = path.join(__dirname, '..', 'renderer');
@@ -445,6 +446,13 @@ function registerIpc() {
     }
     const gameDir = settings.get('gameDir');
     const safe = settings.get('safeMode') === true;
+    // Путь к «Документам» с кириллицей ломает интерфейс omp-cef (ERR_FAILED) — чиним до запуска
+    try {
+      const r = await cefpath.ensure(app.getPath('documents'));
+      if (r.status !== 'not-needed' && r.status !== 'ok') log.info('[cefpath]', r.status, r.text);
+    } catch (err) {
+      log.warn('[cefpath]', err.message);
+    }
     try {
       if (safe) await safeMode.disable(gameDir, manifest, settings);
       const run = await launchGame({
