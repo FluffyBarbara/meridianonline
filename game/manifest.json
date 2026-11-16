@@ -52,7 +52,8 @@
   "prerequisites": [
     "directx",
     "vc2010",
-    "vc2015"
+    "vc2015",
+    "directplay"
   ],
   "publishedAt": "2026-11-16T14:39:25.804Z"
 }

@@ -11,6 +11,8 @@ const REPO_NAME = 'meridianonline';
 const REPO_BRANCH = 'main';
 
 const RAW_BASE = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}`;
+const API_BASE = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents`;
+const CDN_BASE = `https://cdn.jsdelivr.net/gh/${REPO_OWNER}/${REPO_NAME}@${REPO_BRANCH}`;
 
 module.exports = {
   APP_NAME: 'Meridian Online',
@@ -20,9 +22,18 @@ module.exports = {
   REPO_NAME,
 
   // Удалённый конфиг: сервера, новости, ссылки, слайды.
-  CONTENT_URL: `${RAW_BASE}/content/launcher.json`,
+  // Несколько адресов: если провайдер блокирует raw.githubusercontent.com, пробуем GitHub API и CDN jsDelivr.
+  CONTENT_URLS: [
+    `${RAW_BASE}/content/launcher.json`,
+    `${API_BASE}/content/launcher.json?ref=${REPO_BRANCH}`,
+    `${CDN_BASE}/content/launcher.json`,
+  ],
   // Манифест сборки игры: версия, архивы для скачивания, параметры запуска.
-  GAME_MANIFEST_URL: `${RAW_BASE}/game/manifest.json`,
+  GAME_MANIFEST_URLS: [
+    `${RAW_BASE}/game/manifest.json`,
+    `${API_BASE}/game/manifest.json?ref=${REPO_BRANCH}`,
+    `${CDN_BASE}/game/manifest.json`,
+  ],
 
   // Сервер по умолчанию (если удалённый конфиг недоступен).
   DEFAULT_SERVER: {

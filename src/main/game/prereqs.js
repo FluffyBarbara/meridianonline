@@ -9,7 +9,8 @@ const { Readable } = require('stream');
 
 /**
  * Системные компоненты, без которых клиент CR-MP не запускается:
- * DirectX 9.0c (d3dx9_*.dll) и Visual C++ Redistributable (x86 — игра 32-битная).
+ * DirectX 9.0c (d3dx9_*.dll), Visual C++ Redistributable (x86 — игра 32-битная)
+ * и компонент Windows DirectPlay (включается через DISM).
  *
  * Проверка — по файлам в SysWOW64 (32-битные DLL на 64-битной Windows) и реестру.
  * Установка — официальные установщики Microsoft в тихом режиме, одним запросом прав администратора.
@@ -17,6 +18,13 @@ const { Readable } = require('stream');
  */
 
 const CATALOG = {
+  directplay: {
+    name: 'DirectPlay (компонент Windows)',
+    // Компонент Windows 8/10/11: «Компоненты прежних версий → DirectPlay»
+    feature: 'DirectPlay',
+    command: 'dism',
+    args: ['/online', '/enable-feature', '/featurename:LegacyComponents', '/featurename:DirectPlay', '/all', '/norestart', '/quiet'],
+  },
   directx: {
     name: 'DirectX 9.0c',
     files: ['d3dx9_25.dll', 'd3dx9_43.dll', 'd3dx9_31.dll'],
@@ -62,7 +70,7 @@ const CATALOG = {
   },
 };
 
-const DEFAULT_LIST = ['directx', 'vc2015'];
+const DEFAULT_LIST = ['directx', 'vc2010', 'vc2015', 'directplay'];
 
 // Коды возврата, которые считаются успехом (3010/1641 — нужна перезагрузка, 1638/5100 — уже есть новее)
 const OK_CODES = new Set([0, 3010, 1641, 1638, 5100]);
@@ -94,10 +102,29 @@ function resolveList(manifest) {
   const list = manifest?.prerequisites ?? DEFAULT_LIST;
   return list
     .map((p) => (typeof p === 'string' ? { id: p, ...CATALOG[p] } : { ...CATALOG[p.id], ...p }))
-    .filter((p) => p && p.url);
+    .filter((p) => p && (p.url || p.command));
+}
+
+/**
+ * Состояние компонента Windows через WMI (работает без прав администратора).
+ * InstallState: 1 — включён, 2 — выключен, 3 — отсутствует. null — не удалось узнать.
+ */
+function featureState(name) {
+  const ps = `(Get-CimInstance -ClassName Win32_OptionalFeature -Filter "Name='${name}'" -ErrorAction SilentlyContinue).InstallState`;
+  return new Promise((resolve) => {
+    execFile('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], { windowsHide: true, timeout: 20000 }, (err, out) => {
+      const v = parseInt(String(out).trim(), 10);
+      resolve(err || isNaN(v) ? null : v);
+    });
+  });
 }
 
 async function isInstalled(p) {
+  if (p.feature) {
+    const st = await featureState(p.feature);
+    // null — компонента нет в этой версии Windows (например, Windows 7, где DirectPlay встроен)
+    return st === null || st === 1;
+  }
   if (p.registry) {
     const v = await regQuery(p.registry.key);
     if (v && v.Installed && parseInt(v.Installed, 16) === 1) {
@@ -122,13 +149,18 @@ class Prereqs extends EventEmitter {
     super();
     this.cacheDir = cacheDir;
     this.busy = false;
+    this.known = new Set(); // уже найденные компоненты — повторно не проверяем
   }
 
   /** Список компонентов с отметкой, установлены ли они. */
   async check(manifest) {
     const list = resolveList(manifest);
     if (process.platform !== 'win32') return list.map((p) => ({ id: p.id, name: p.name, installed: true }));
-    return Promise.all(list.map(async (p) => ({ id: p.id, name: p.name, installed: await isInstalled(p) })));
+    return Promise.all(list.map(async (p) => {
+      const installed = this.known.has(p.id) || (await isInstalled(p));
+      if (installed) this.known.add(p.id);
+      return { id: p.id, name: p.name, installed };
+    }));
   }
 
   async missing(manifest) {
@@ -175,7 +207,7 @@ class Prereqs extends EventEmitter {
     const lines = ['$r = @{}'];
     for (const j of jobs) {
       const args = j.args.map(q).join(',');
-      lines.push(`try { $p = Start-Process -FilePath ${q(j.path)} -ArgumentList ${args} -Wait -PassThru; $r[${q(j.id)}] = $p.ExitCode } catch { $r[${q(j.id)}] = -1 }`);
+      lines.push(`try { $p = Start-Process -FilePath ${q(j.path)} -ArgumentList ${args} -WindowStyle Hidden -Wait -PassThru; $r[${q(j.id)}] = $p.ExitCode } catch { $r[${q(j.id)}] = -1 }`);
     }
     lines.push(`$r | ConvertTo-Json | Set-Content -LiteralPath ${q(resultFile)} -Encoding UTF8`);
     const inner = Buffer.from(lines.join('\n'), 'utf16le').toString('base64');
@@ -204,9 +236,14 @@ class Prereqs extends EventEmitter {
       if (!need.length) return { ok: true, installed: [], failed: [] };
       const full = resolveList(manifest).filter((p) => need.some((n) => n.id === p.id));
 
+      await fsp.mkdir(this.cacheDir, { recursive: true });
       const jobs = [];
       for (let i = 0; i < full.length; i++) {
         const p = full[i];
+        if (p.command === 'dism') {
+          jobs.push({ id: p.id, path: path.join(winDir(), 'System32', 'dism.exe'), args: p.args });
+          continue;
+        }
         this.emitState('prereq-download', { name: p.name, index: i + 1, count: full.length, percent: 0 });
         jobs.push({ id: p.id, path: await this.download(p, i + 1, full.length), args: p.args });
       }

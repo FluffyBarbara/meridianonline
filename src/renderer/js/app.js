@@ -237,7 +237,7 @@ function computeView() {
       view.info = `${esc(p.name)}${p.count > 1 ? ` · ${p.index} из ${p.count}` : ''}`;
       view.button.label = 'Компоненты…';
     } else if (p.state === 'prereq-install') {
-      view.title = 'Установка DirectX и Visual C++';
+      view.title = 'Установка компонентов Windows';
       view.mode = 'indeterminate';
       view.info = 'Разрешите установку в окне Windows (запрос администратора)';
       view.button.label = 'Компоненты…';
@@ -275,8 +275,10 @@ function computeView() {
 
   if (!g.installed) {
     if (!g.published) {
-      Object.assign(view, { title: 'Игра не найдена', info: 'Сборка скоро появится. Если игра уже установлена — укажите папку.' });
-      view.actions = [['folder-search', 'Указать папку', 'choose-dir']];
+      Object.assign(view, g.online === false
+        ? { title: 'Нет связи с сервером обновлений', mode: 'error', bar: 100, info: 'Проверьте интернет или отключите VPN/прокси. Если игра уже установлена — укажите папку.' }
+        : { title: 'Игра не найдена', info: 'Сборка скоро появится. Если игра уже установлена — укажите папку.' });
+      view.actions = [['refresh-cw', 'Проверить снова', 'recheck'], ['folder-search', 'Указать папку', 'choose-dir']];
       Object.assign(view.button, { label: 'Скоро', icon: 'download', disabled: true });
     } else {
       Object.assign(view, { title: 'Игра не установлена', info: `Загрузка: ${bytes(g.downloadSize)}${g.unpackedSize ? ` · на диске ${bytes(g.unpackedSize)}` : ''}` });
@@ -381,13 +383,19 @@ async function runAction(action) {
     case 'launch':
       await launch();
       break;
+    case 'recheck':
+      state.game = null;
+      renderStatus();
+      await refreshGame(true);
+      if (!state.game.published) toast({ title: state.game.online === false ? 'Сервер обновлений недоступен' : 'Сборка пока не опубликована', type: 'warn' });
+      break;
   }
 }
 
 function reportPrereqs(r) {
   if (!r) return;
   if (r.declined) {
-    toast({ title: 'Компоненты не установлены', text: 'Без DirectX и Visual C++ игра может не запуститься. Установить их можно в настройках.', type: 'warn', timeout: 9000 });
+    toast({ title: 'Компоненты не установлены', text: 'Без DirectX, Visual C++ и DirectPlay игра может не запуститься. Установить их можно в настройках.', type: 'warn', timeout: 9000 });
   } else if (r.error || r.failed?.length) {
     toast({ title: 'Не удалось установить компоненты', text: r.error || r.failed.join(', '), type: 'error', timeout: 9000 });
   } else if (r.installed?.length) {
@@ -422,7 +430,7 @@ function askPrereqs(names) {
         <div class="prereq-list">
           ${names.map((n) => `<div class="prereq">${icon('download')}<span>${esc(n)}</span><span class="chip">не установлен</span></div>`).join('')}
         </div>
-        <p class="prereq-note">Лаунчер скачает официальные установщики Microsoft и установит их автоматически. Windows один раз попросит разрешение администратора.</p>
+        <p class="prereq-note">Лаунчер скачает официальные установщики Microsoft, включит нужные компоненты Windows и всё установит автоматически. Windows один раз попросит разрешение администратора.</p>
       </div>
       <div class="modal__foot">
         <button class="btn" data-choice="skip">Запустить без них</button>
@@ -723,7 +731,7 @@ function openSettings() {
         </div>
         <div class="set-row">
           <div class="set-row__text">
-            <div class="set-row__label">DirectX и Visual C++</div>
+            <div class="set-row__label">DirectX, Visual C++ и DirectPlay</div>
             <div class="set-row__desc" id="prereqStatus">Проверка…</div>
           </div>
           <button class="btn btn--sm" data-set="prereqs">${icon('download')}Установить</button>
@@ -910,6 +918,11 @@ async function boot() {
     toast({ title: `Обновление игры ${state.game.latestVersion}`, text: 'Загрузка началась автоматически.' });
     runAction('install');
   }
+
+  // Пока сборки нет — проверяем каждую минуту
+  setInterval(() => {
+    if (state.game && !state.game.published && !state.game.installed) refreshGame(true);
+  }, 60 * 1000);
 
   // Подтягиваем свежий контент раз в 10 минут
   setInterval(async () => {
