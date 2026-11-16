@@ -139,7 +139,7 @@ async function getContent(force = false) {
   if (contentCache && !force) return contentCache;
   try {
     const { data, source } = await loadRemoteJson({
-      url: config.CONTENT_URL, cacheName: 'launcher', bundled: 'content/launcher.json',
+      urls: config.CONTENT_URLS, cacheName: 'launcher', bundled: 'content/launcher.json',
     });
     contentCache = { ...defaultContent(), ...data, _source: source };
   } catch {
@@ -154,12 +154,12 @@ async function getContent(force = false) {
 async function getManifest(force = false) {
   if (manifestCache && !force) return manifestCache;
   try {
-    const { data } = await loadRemoteJson({
-      url: config.GAME_MANIFEST_URL, cacheName: 'manifest', bundled: 'game/manifest.json',
+    const { data, source } = await loadRemoteJson({
+      urls: config.GAME_MANIFEST_URLS, cacheName: 'manifest', bundled: 'game/manifest.json',
     });
-    manifestCache = data;
+    manifestCache = { ...data, _source: source };
   } catch {
-    manifestCache = { version: null, archives: [] };
+    manifestCache = { version: null, archives: [], _source: 'none' };
   }
   return manifestCache;
 }
@@ -200,6 +200,7 @@ async function gameStatus(force = false) {
     unpackedSize: manifest.unpackedSize || null,
     partialBytes: partial,
     installerState: installer.progress,
+    online: manifest._source === 'remote',
     running: gameRunning,
   };
 }
