@@ -29,13 +29,17 @@ contextBridge.exposeInMainWorld('meridian', {
     install: () => ipcRenderer.invoke('game:install'),
     pause: () => ipcRenderer.invoke('game:pause'),
     cancel: () => ipcRenderer.invoke('game:cancel'),
-    launch: (serverId) => ipcRenderer.invoke('game:launch', serverId),
+    launch: (serverId, opts) => ipcRenderer.invoke('game:launch', serverId, opts),
     validateNick: (nick) => ipcRenderer.invoke('game:validate-nick', nick),
     chooseDir: () => ipcRenderer.invoke('game:choose-dir'),
     openDir: () => ipcRenderer.invoke('game:open-dir'),
     reinstall: () => ipcRenderer.invoke('game:reinstall'),
     onProgress: on('game:progress'),
     onRunning: on('game:running'),
+  },
+  prereqs: {
+    check: () => ipcRenderer.invoke('prereqs:check'),
+    install: () => ipcRenderer.invoke('prereqs:install'),
   },
   servers: {
     query: (ids) => ipcRenderer.invoke('server:query', ids),

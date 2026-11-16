@@ -185,7 +185,7 @@ function showWelcome() {
 }
 
 // ═════════════════ Статус и главная кнопка ═════════════════
-const BUSY = ['preparing', 'downloading', 'verifying', 'extracting'];
+const BUSY = ['preparing', 'downloading', 'verifying', 'extracting', 'prereq-download', 'prereq-install'];
 
 function computeView() {
   const g = state.game;
@@ -230,6 +230,17 @@ function computeView() {
       view.pct = `${Math.round(p.percent || 0)}%`;
       view.bar = p.percent || 0;
       view.info = p.file || '';
+    } else if (p.state === 'prereq-download') {
+      view.title = 'Загрузка компонентов Windows';
+      view.pct = `${Math.round(p.percent || 0)}%`;
+      view.bar = p.percent || 0;
+      view.info = `${esc(p.name)}${p.count > 1 ? ` · ${p.index} из ${p.count}` : ''}`;
+      view.button.label = 'Компоненты…';
+    } else if (p.state === 'prereq-install') {
+      view.title = 'Установка DirectX и Visual C++';
+      view.mode = 'indeterminate';
+      view.info = 'Разрешите установку в окне Windows (запрос администратора)';
+      view.button.label = 'Компоненты…';
     } else if (p.state === 'extracting') {
       view.title = 'Распаковка файлов игры';
       view.pct = `${Math.round(p.percent || 0)}%`;
@@ -330,6 +341,7 @@ async function runAction(action) {
       if (res.ok) {
         toast({ title: 'Игра установлена', text: 'Можно заходить на сервер!', type: 'success' });
         state.progress = null;
+        reportPrereqs(res.prereqs);
       } else if (res.cancelled) {
         state.progress = null;
       } else if (res.error) {
@@ -372,6 +384,57 @@ async function runAction(action) {
   }
 }
 
+function reportPrereqs(r) {
+  if (!r) return;
+  if (r.declined) {
+    toast({ title: 'Компоненты не установлены', text: 'Без DirectX и Visual C++ игра может не запуститься. Установить их можно в настройках.', type: 'warn', timeout: 9000 });
+  } else if (r.error || r.failed?.length) {
+    toast({ title: 'Не удалось установить компоненты', text: r.error || r.failed.join(', '), type: 'error', timeout: 9000 });
+  } else if (r.installed?.length) {
+    toast({
+      title: 'Компоненты установлены',
+      text: r.reboot ? `${r.installed.join(', ')}. Рекомендуем перезагрузить компьютер.` : r.installed.join(', '),
+      type: 'success',
+    });
+  }
+}
+
+async function installPrereqs() {
+  const r = await api.prereqs.install();
+  state.progress = null;
+  renderStatus();
+  reportPrereqs(r);
+  return r;
+}
+
+function askPrereqs(names) {
+  return new Promise((resolve) => {
+    let choice = 'cancel';
+    const dlg = openModal(`
+      <div class="modal__head">
+        <div class="modal__icon">${icon('wrench')}</div>
+        <div>
+          <div class="modal__title">Нужны компоненты Windows</div>
+          <div class="modal__sub">Без них клиент CR-MP может не запуститься</div>
+        </div>
+      </div>
+      <div class="modal__body">
+        <div class="prereq-list">
+          ${names.map((n) => `<div class="prereq">${icon('download')}<span>${esc(n)}</span><span class="chip">не установлен</span></div>`).join('')}
+        </div>
+        <p class="prereq-note">Лаунчер скачает официальные установщики Microsoft и установит их автоматически. Windows один раз попросит разрешение администратора.</p>
+      </div>
+      <div class="modal__foot">
+        <button class="btn" data-choice="skip">Запустить без них</button>
+        <button class="btn btn--primary" data-choice="install">${icon('download')}Установить</button>
+      </div>`, { onClose: () => resolve(choice) });
+    dlg.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-choice]');
+      if (b) { choice = b.dataset.choice; closeModal(); }
+    });
+  });
+}
+
 async function launch() {
   if (!state.settings.nickname) {
     toggleAccountPop(true);
@@ -381,7 +444,20 @@ async function launch() {
   state.launching = true;
   renderStatus();
   const server = selectedServer();
-  const res = await api.game.launch(server.id);
+  let res = await api.game.launch(server.id);
+  if (res.needPrereqs) {
+    state.launching = false;
+    renderStatus();
+    const choice = await askPrereqs(res.needPrereqs);
+    if (choice === 'cancel') return;
+    if (choice === 'install') {
+      const r = await installPrereqs();
+      if (!r.ok) return;
+    }
+    state.launching = true;
+    renderStatus();
+    res = await api.game.launch(server.id, { skipPrereqs: true });
+  }
   state.launching = false;
   if (!res.ok) {
     toast({ title: 'Не удалось запустить игру', text: res.error, type: 'error', timeout: 8000 });
@@ -647,6 +723,13 @@ function openSettings() {
         </div>
         <div class="set-row">
           <div class="set-row__text">
+            <div class="set-row__label">DirectX и Visual C++</div>
+            <div class="set-row__desc" id="prereqStatus">Проверка…</div>
+          </div>
+          <button class="btn btn--sm" data-set="prereqs">${icon('download')}Установить</button>
+        </div>
+        <div class="set-row">
+          <div class="set-row__text">
             <div class="set-row__label">Обновлять игру автоматически</div>
             <div class="set-row__desc">Скачивать новую версию сборки при запуске лаунчера</div>
           </div>
@@ -700,6 +783,7 @@ function openSettings() {
       if (act === 'open') openFolder();
       if (act === 'choose') { closeModal(); await runAction('choose-dir'); openSettings(); }
       if (act === 'reinstall') { closeModal(); reinstallGame(); }
+      if (act === 'prereqs') { closeModal(); await installPrereqs(); }
       if (act === 'check-update') { api.updater.check(); b.querySelector('.ico')?.classList.add('spin'); }
     }
     const seg = e.target.closest('[data-seg] button');
@@ -708,6 +792,16 @@ function openSettings() {
       state.settings = await api.settings.set({ [key]: seg.dataset.v });
       seg.parentElement.querySelectorAll('button').forEach((x) => x.classList.toggle('is-active', x === seg));
     }
+  });
+  api.prereqs.check().then((list) => {
+    const el = dlg.querySelector('#prereqStatus');
+    if (!el) return;
+    const missing = list.filter((p) => !p.installed);
+    el.innerHTML = missing.length
+      ? `<span style="color:var(--amber)">Не хватает: ${missing.map((p) => esc(p.name)).join(', ')}</span>`
+      : `<span style="color:var(--green)">Всё установлено</span> · ${list.map((p) => esc(p.name)).join(', ')}`;
+    const btn = dlg.querySelector('[data-set="prereqs"]');
+    if (!missing.length) btn.disabled = true;
   });
   dlg.addEventListener('change', async (e) => {
     const inp = e.target.closest('input[data-set]');

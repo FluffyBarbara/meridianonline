@@ -171,7 +171,7 @@ async function upload(version, files, token) {
 
   await run7z([
     'a', '-t7z', `-mx=${o.level || 7}`, '-mmt=on', `-v${o.volume || '1900m'}`, '-bsp1', '-bso0',
-    '-xr!.meridian-download', '-x!meridian.json',
+    '-xr!.meridian-download', '-x!meridian.json', '-xr!*.log',
     path.join(OUT, `${base}.7z`), '*',
   ], src);
 

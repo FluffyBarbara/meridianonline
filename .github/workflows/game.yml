@@ -1,0 +1,122 @@
+name: Publish game build
+
+# Публикует сборку игры для лаунчера:
+#   Google Drive (.rar) → распаковка → 7z-тома по 1900 МБ → pre-release "game-<версия>" → game/manifest.json
+#
+# Как выпустить новую сборку: загрузите архив на Google Drive (доступ «всем, у кого есть ссылка»),
+# впишите ссылку и новую версию в game/source.json и залейте изменение — дальше всё автоматически.
+
+on:
+  push:
+    branches: [main, 'claude/**']
+    paths: [game/source.json]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: game-build
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Read game/source.json
+        id: src
+        run: |
+          VERSION=$(node -p "require('./game/source.json').version")
+          CURRENT=$(node -p "const m=require('./game/manifest.json'); m.archives && m.archives.length ? m.version : ''")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [ "$VERSION" = "$CURRENT" ]; then
+            echo "Сборка $VERSION уже опубликована — пропускаю"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Free disk space
+        if: steps.src.outputs.skip == 'false'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost || true
+          df -h /
+
+      - name: Install dependencies
+        if: steps.src.outputs.skip == 'false'
+        run: npm ci
+
+      - name: Download archive from Google Drive
+        if: steps.src.outputs.skip == 'false'
+        run: |
+          URL=$(node -p "require('./game/source.json').url")
+          ID=$(node -p "const u=process.argv[1]; (u.match(/\/d\/([\w-]+)/)||u.match(/[?&]id=([\w-]+)/)||[])[1]||''" "$URL")
+          mkdir -p work
+          if [ -n "$ID" ]; then
+            DL="https://drive.usercontent.google.com/download?id=$ID&export=download&confirm=t"
+          else
+            DL="$URL"
+          fi
+          curl -fL --retry 5 --retry-delay 10 -o work/game.archive "$DL"
+          ls -la work/game.archive
+          head -c 8 work/game.archive | od -c | head -1
+          if ! head -c 4 work/game.archive | grep -q "Rar!"; then
+            echo "::error::Скачанный файл не RAR-архив. Проверьте, что у файла на Google Drive открыт доступ по ссылке."
+            exit 1
+          fi
+
+      - name: Extract
+        if: steps.src.outputs.skip == 'false'
+        run: |
+          node scripts/extract-rar.js work/game.archive work/unpacked
+          rm -f work/game.archive
+          df -h /
+
+      - name: Pack into 7z volumes
+        if: steps.src.outputs.skip == 'false'
+        run: |
+          FOLDER=$(node -p "require('./game/source.json').folder || ''")
+          SRC="work/unpacked/$FOLDER"
+          if [ ! -f "$SRC/gta_sa.exe" ]; then
+            SRC=$(dirname "$(find work/unpacked -maxdepth 3 -iname gta_sa.exe | head -1)")
+          fi
+          echo "Папка игры: $SRC"
+          node scripts/pack-game.js --src "$SRC" --version "${{ steps.src.outputs.version }}"
+          rm -rf work/unpacked
+          ls -la dist-game
+
+      - name: Publish pre-release
+        if: steps.src.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="game-${{ steps.src.outputs.version }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist-game/* --clobber
+          else
+            gh release create "$TAG" dist-game/* \
+              --prerelease --latest=false \
+              --target "${{ github.sha }}" \
+              --title "Сборка игры ${{ steps.src.outputs.version }}" \
+              --notes "Файлы игры для лаунчера Meridian Online. Скачивать вручную не нужно — установите лаунчер."
+          fi
+
+      - name: Commit game/manifest.json
+        if: steps.src.outputs.skip == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add game/manifest.json
+          git commit -m "Сборка игры ${{ steps.src.outputs.version }}: обновлён манифест"
+          for i in 1 2 3; do
+            git pull --rebase origin "${{ github.ref_name }}" && git push origin "HEAD:${{ github.ref_name }}" && break
+            sleep 5
+          done

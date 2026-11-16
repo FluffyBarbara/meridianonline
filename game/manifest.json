@@ -4,16 +4,41 @@
   "archives": [],
   "launch": {
     "exe": "samp.exe",
-    "args": ["{ip}:{port}"],
+    "args": [
+      "{ip}:{port}"
+    ],
     "fallback": {
       "exe": "gta_sa.exe",
-      "args": ["-c", "-n", "{nick}", "-h", "{ip}", "-p", "{port}"]
+      "args": [
+        "-c",
+        "-n",
+        "{nick}",
+        "-h",
+        "{ip}",
+        "-p",
+        "{port}"
+      ]
     },
     "registry": [
-      { "key": "HKCU\\Software\\SAMP", "name": "PlayerName", "value": "{nick}" },
-      { "key": "HKCU\\Software\\SAMP", "name": "gta_sa_exe", "value": "{gameDir}\\gta_sa.exe" }
+      {
+        "key": "HKCU\\Software\\SAMP",
+        "name": "PlayerName",
+        "value": "{nick}"
+      },
+      {
+        "key": "HKCU\\Software\\SAMP",
+        "name": "gta_sa_exe",
+        "value": "{gameDir}\\gta_sa.exe"
+      }
     ],
     "process": "gta_sa.exe",
-    "required": ["gta_sa.exe"]
-  }
+    "required": [
+      "gta_sa.exe"
+    ]
+  },
+  "prerequisites": [
+    "directx",
+    "vc2010",
+    "vc2015"
+  ]
 }

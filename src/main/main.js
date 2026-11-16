@@ -10,6 +10,7 @@ const updater = require('./updater');
 const { loadRemoteJson } = require('./content');
 const { queryServer } = require('./game/query');
 const { GameInstaller } = require('./game/installer');
+const { Prereqs } = require('./game/prereqs');
 const { launchGame, isInstalled, isGameRunning, validateNickname } = require('./game/launch');
 
 const DEV = process.argv.includes('--dev');
@@ -24,6 +25,7 @@ let contentCache = null;
 let gameRunning = false;
 
 const installer = new GameInstaller();
+const prereqs = new Prereqs(path.join(app.getPath('userData'), 'redist'));
 
 // ───────────────────────── Один экземпляр ─────────────────────────
 if (!app.requestSingleInstanceLock()) {
@@ -235,7 +237,7 @@ function registerIpc() {
   ipcMain.on('window:minimize', (e) => BrowserWindow.fromWebContents(e.sender)?.minimize());
   ipcMain.on('window:close', (e) => {
     const w = BrowserWindow.fromWebContents(e.sender);
-    if (w === win && installer.busy) {
+    if (w === win && (installer.busy || prereqs.busy)) {
       // Не убиваем загрузку — прячем в трей
       createTray();
       w.hide();
@@ -255,17 +257,25 @@ function registerIpc() {
     const manifest = await getManifest(true);
     const gameDir = settings.get('gameDir');
     const result = await installer.install(manifest, gameDir);
-    if (result.ok) settings.set({ installedVersion: result.version });
+    if (result.ok) {
+      settings.set({ installedVersion: result.version });
+      // Сразу ставим DirectX / Visual C++, если их нет
+      result.prereqs = await prereqs.install(manifest);
+    }
     return result;
   });
   ipcMain.handle('game:pause', () => installer.pause());
   ipcMain.handle('game:cancel', () => installer.discard(settings.get('gameDir')));
 
-  ipcMain.handle('game:launch', async (_e, serverId) => {
+  ipcMain.handle('game:launch', async (_e, serverId, opts = {}) => {
     if (gameRunning) return { ok: false, error: 'Игра уже запущена' };
     const content = await getContent();
     const server = content.servers.find((s) => s.id === serverId) || content.servers[0];
     const manifest = await getManifest();
+    if (!opts.skipPrereqs) {
+      const missing = await prereqs.missing(manifest);
+      if (missing.length) return { ok: false, needPrereqs: missing.map((p) => p.name) };
+    }
     try {
       await launchGame({
         gameDir: settings.get('gameDir'),
@@ -286,6 +296,9 @@ function registerIpc() {
     }, 1200);
     return { ok: true };
   });
+
+  ipcMain.handle('prereqs:check', async () => prereqs.check(await getManifest()));
+  ipcMain.handle('prereqs:install', async () => prereqs.install(await getManifest()));
 
   ipcMain.handle('game:validate-nick', (_e, nick) => validateNickname(nick));
 
@@ -340,6 +353,7 @@ function registerIpc() {
   ipcMain.handle('updater:status', () => updater.status);
 
   installer.on('progress', (p) => send('game:progress', p));
+  prereqs.on('progress', (p) => send('game:progress', p.state === 'prereq-done' ? { state: 'idle' } : p));
   updater.on('status', (s) => {
     send('updater:status', s);
     if (splash && !splash.isDestroyed()) splash.webContents.send('updater:status', s);
@@ -367,5 +381,5 @@ app.whenReady().then(async () => {
 app.on('before-quit', () => installer.cancel && installer.busy && installer.pause());
 
 app.on('window-all-closed', () => {
-  if (!installer.busy) app.quit();
+  if (!installer.busy && !prereqs.busy) app.quit();
 });
