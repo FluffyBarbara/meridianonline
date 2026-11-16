@@ -73,7 +73,7 @@ const api = {
   },
   support: { report: async () => ({ ok: true, file: 'C:\\Users\\User\\Desktop\\Meridian-отчёт.txt' }) },
   servers: {
-    query: async () => [{ id: 'white', online: true, players: 187, maxPlayers: 500, ping: 38 }],
+    query: async () => [scenario === 'unknown' ? { id: 'white', online: 'unknown' } : { id: 'white', online: true, players: 187, maxPlayers: 500, ping: 38 }],
   },
   updater: {
     check() {}, install() {},

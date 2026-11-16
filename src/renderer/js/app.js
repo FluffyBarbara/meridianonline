@@ -56,15 +56,17 @@ function renderServers() {
   wrap.innerHTML = '';
   for (const s of state.content.servers) {
     const q = state.servers[s.id];
-    const cls = q ? (q.online ? 'is-online' : 'is-offline') : '';
+    const online = q?.online === true;
+    const unknown = q?.online === 'unknown';
+    const cls = !q ? '' : (online ? 'is-online' : (unknown ? 'is-unknown' : 'is-offline'));
     let meta;
     if (!q) meta = '<span>Подключение к серверу…</span>';
-    else if (!q.online) meta = '<span>Сервер недоступен</span>';
-    else {
-      meta = `<span><b>${q.players ?? 0}</b> / ${q.maxPlayers ?? '—'}</span><span class="sep"></span>
-              <span class="server__ping">${icon('signal')}${q.ping} мс</span>`;
-    }
-    const load = q?.online && q.maxPlayers ? Math.min(100, (q.players / q.maxPlayers) * 100) : 0;
+    else if (online) {
+      meta = `<span><b>${q.players ?? 0}</b> / ${q.maxPlayers ?? '—'}</span>`
+        + (q.ping != null ? `<span class="sep"></span><span class="server__ping">${icon('signal')}${q.ping} мс</span>` : '');
+    } else if (unknown) meta = '<span>Онлайн неизвестен · можно играть</span>';
+    else meta = '<span>Сервер недоступен</span>';
+    const load = online && q.maxPlayers ? Math.min(100, (q.players / q.maxPlayers) * 100) : 0;
     const el = h(`
       <button class="server ${cls} ${sel?.id === s.id ? 'is-selected' : ''}" data-id="${esc(s.id)}">
         <span class="server__dot"></span>
@@ -86,11 +88,12 @@ function renderServers() {
   }
 
   const results = Object.values(state.servers);
-  const anyOnline = results.some((r) => r.online);
-  const total = results.reduce((sum, r) => sum + (r.online ? r.players || 0 : 0), 0);
-  $('#onlineTotal').textContent = results.length ? (anyOnline ? total : 'офлайн') : '…';
+  const anyOnline = results.some((r) => r.online === true);
+  const anyUnknown = results.some((r) => r.online === 'unknown');
+  const total = results.reduce((sum, r) => sum + (r.online === true ? r.players || 0 : 0), 0);
+  $('#onlineTotal').textContent = results.length ? (anyOnline ? total : (anyUnknown ? '—' : 'офлайн')) : '…';
   $('#onlineTotal').classList.toggle('is-off', results.length > 0 && !anyOnline);
-  $('#onlineDot').classList.toggle('is-on', anyOnline);
+  $('#onlineDot').classList.toggle('is-on', anyOnline || anyUnknown);
 }
 
 async function pollServers() {
@@ -549,6 +552,7 @@ function bindStatus() {
     else showCrashHelp(neverStarted ? null : seconds);
   });
   $('#fixBtn').addEventListener('click', openFix);
+  $('#creditBtn').addEventListener('click', () => api.app.open('https://t.me/developerbyfluffybarbara'));
 }
 
 // ═════════════════ Драйвер видеокарты ═════════════════
