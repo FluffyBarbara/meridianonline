@@ -6,6 +6,7 @@ const path = require('path');
 const os = require('os');
 const { execFile } = require('child_process');
 const { app, screen } = require('electron');
+const cefpath = require('./game/cefpath');
 
 /**
  * «Отчёт для поддержки»: всё, что нужно, чтобы понять причину вылета у игрока, в одном текстовом файле.
@@ -118,8 +119,24 @@ async function buildReport({ gameDir, nickname, manifest, fileList, prereqs, lau
   section('Документы\\GTA San Andreas User Files', `${userFiles}\n${await listDir(userFiles)}`);
 
   // Клиент CEF (omp-cef): лог, настройки и скачанные с сервера ресурсы
-  const cefDir = path.join(userFiles, 'cef');
-  const cefLog = await tail(path.join(cefDir, 'client.log'), 250);
+  const docs = app.getPath('documents');
+  const an = cefpath.analyze(docs);
+  if (an) {
+    const linkState = an.unsupported
+      ? `✖ ${an.unsupported}`
+      : an.links.map((l) => {
+        let st = 'нет';
+        try { st = fs.lstatSync(l.linkMoji).isSymbolicLink() ? `ссылка → ${fs.realpathSync(l.linkMoji)}` : 'обычная папка (создана самим omp-cef)'; } catch {}
+        return `${l.linkMoji}: ${st}`;
+      }).join('\n');
+    section('CEF: путь к «Документам» с кириллицей', `omp-cef видит путь как: ${an.moji || '—'}\n${linkState}`);
+  }
+  let cefDir = path.join(userFiles, 'cef');
+  let cefLog = null;
+  for (const dir of cefpath.candidateCefDirs(docs, gameDir)) {
+    const t = await tail(path.join(dir, 'client.log'), 250);
+    if (t) { cefDir = dir; cefLog = `[${dir}]\n${t}`; break; }
+  }
   section('CEF: client.log', cefLog || '(нет — клиент CEF ещё не запускался)');
   try { section('CEF: config.json', await fsp.readFile(path.join(cefDir, 'config.json'), 'utf8')); } catch {}
   const cacheRoot = path.join(cefDir, 'cache');

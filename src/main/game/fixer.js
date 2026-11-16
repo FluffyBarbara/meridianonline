@@ -6,6 +6,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { execFile } = require('child_process');
 const { EventEmitter } = require('events');
+const cefpath = require('./cefpath');
 
 /**
  * «Фикс игры» — набор известных лечений вылетов CR-MP / SA-MP:
@@ -176,6 +177,19 @@ class GameFixer extends EventEmitter {
         } else add('settings', 'Настройки графики GTA', 'ok', 'Файл настроек ещё не создан — сбрасывать нечего');
       }
 
+      // 4.0. Путь к «Документам» с кириллицей ломает omp-cef — создаём ссылку
+      let cefLinkAdmin = null;
+      if (win) {
+        this.progress('Проверяем путь к «Документам» для интерфейса');
+        const r = await cefpath.ensure(this.documentsDir);
+        if (r.status === 'needs-admin') cefLinkAdmin = r.analysis;
+        const title = 'Путь к «Документам» (CEF)';
+        if (r.status === 'not-needed') add('cefpath', title, 'ok', 'Без кириллицы — исправление не нужно');
+        else if (r.status === 'ok' || r.status === 'created') add('cefpath', title, 'ok', `${r.text}: интерфейс сервера будет загружаться правильно`);
+        else if (r.status === 'needs-admin') add('cefpath', title, 'warn', 'Нужна ссылка в системной папке — будет создана с правами администратора');
+        else add('cefpath', title, 'fail', `${r.text}. Интерфейс сервера может не открываться (ERR_FAILED)`);
+      }
+
       // 4.1. Кеш интерфейса CEF (omp-cef): при следующем входе на сервер ресурсы скачаются заново
       {
         this.progress('Очищаем кеш интерфейса (CEF)');
@@ -212,7 +226,7 @@ class GameFixer extends EventEmitter {
       }
 
       // 6. Всё, что требует прав администратора, — одним запросом
-      if (win && (options.components || options.defender)) {
+      if (win && (options.components || options.defender || cefLinkAdmin)) {
         this.progress('Компоненты Windows и защитник');
         const pq = (s) => `'${String(s).replace(/'/g, "''")}'`;
         const extra = [{
@@ -222,6 +236,7 @@ class GameFixer extends EventEmitter {
         if (options.defender) {
           extra.push({ id: 'defender', ps: `Add-MpPreference -ExclusionPath ${pq(gameDir)} -ErrorAction Stop` });
         }
+        if (cefLinkAdmin) extra.push({ id: 'cefpath', ps: cefpath.elevatedCommand(cefLinkAdmin) });
         const r = options.components
           ? await this.prereqs.install(manifest, { force: true, extra })
           : await this.prereqs.install({ ...manifest, prerequisites: [] }, { extra });

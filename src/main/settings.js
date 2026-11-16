@@ -20,8 +20,9 @@ const DEFAULTS = {
   autoUpdateGame: true,
   // Анимированный фон
   animatedBackground: true,
-  // Показывать статус в Discord
-  discordPresence: true,
+  settingsVersion: 2,
+  // Показывать статус в Discord (по умолчанию выключено, включается в настройках)
+  discordPresence: false,
   // Безопасный запуск: временно отключать графические моды
   safeMode: false,
   // Что отключено безопасным запуском (чтобы вернуть после выхода из игры)
@@ -39,8 +40,14 @@ function load() {
   try {
     const raw = JSON.parse(fs.readFileSync(file(), 'utf8'));
     cache = { ...DEFAULTS, ...raw };
+    // v2: статус в Discord стал выключенным по умолчанию — выключаем у всех, кто его не включал сам
+    if (!raw.settingsVersion || raw.settingsVersion < 2) {
+      cache.discordPresence = false;
+      cache.settingsVersion = 2;
+      save();
+    }
   } catch {
-    cache = { ...DEFAULTS };
+    cache = { ...DEFAULTS, settingsVersion: 2 };
   }
   return cache;
 }
