@@ -1,7 +1,20 @@
 {
-  "version": "0.0.0",
-  "unpackedSize": 0,
-  "archives": [],
+  "version": "1.0.0",
+  "unpackedSize": 7131355337,
+  "archives": [
+    {
+      "name": "MeridianOnline-1.0.0.7z.001",
+      "url": "https://github.com/FluffyBarbara/meridianonline/releases/download/game-1.0.0/MeridianOnline-1.0.0.7z.001",
+      "size": 1992294400,
+      "sha256": "5f8bab5e59e2d6927171aca6b49fd524b16c9d8fc9e4c78991406465f52f6185"
+    },
+    {
+      "name": "MeridianOnline-1.0.0.7z.002",
+      "url": "https://github.com/FluffyBarbara/meridianonline/releases/download/game-1.0.0/MeridianOnline-1.0.0.7z.002",
+      "size": 203618601,
+      "sha256": "4b8dfb35cec5c4dbc29f560621df74ae27a6e68cca2b85b9ae00402889748d0b"
+    }
+  ],
   "launch": {
     "exe": "samp.exe",
     "args": [
@@ -40,5 +53,6 @@
     "directx",
     "vc2010",
     "vc2015"
-  ]
+  ],
+  "publishedAt": "2026-11-16T14:39:25.804Z"
 }
