@@ -48,7 +48,7 @@ const api = {
     reinstall: async () => true,
     onProgress: (cb) => { progressCb = cb; return () => {}; },
     onRunning: noop,
-    onExited: noop,
+    onExited: (cb) => { if (scenario === 'crash') setTimeout(() => cb({ seconds: 7 }), 800); return () => {}; },
     fix: async () => ({
       ok: true, needReinstall: false, damaged: 0, steps: [
         { id: 'kill', title: 'Зависшие процессы', status: 'ok', text: 'Закрыто: gta_sa.exe' },
@@ -65,6 +65,7 @@ const api = {
     check: async () => [{ id: 'directx', name: 'DirectX 9.0c', installed: false }, { id: 'vc2015', name: 'Visual C++ 2015–2022 (x86)', installed: true }],
     install: async () => ({ ok: true, installed: ['DirectX 9.0c'], failed: [] }),
   },
+  support: { report: async () => ({ ok: true, file: 'C:\\Users\\User\\Desktop\\Meridian-отчёт.txt' }) },
   servers: {
     query: async () => [{ id: 'white', online: true, players: 187, maxPlayers: 500, ping: 38 }],
   },

@@ -43,6 +43,9 @@ contextBridge.exposeInMainWorld('meridian', {
     check: () => ipcRenderer.invoke('prereqs:check'),
     install: () => ipcRenderer.invoke('prereqs:install'),
   },
+  support: {
+    report: () => ipcRenderer.invoke('support:report'),
+  },
   servers: {
     query: (ids) => ipcRenderer.invoke('server:query', ids),
   },

@@ -55,7 +55,7 @@ module.exports = {
 
   // Discord Rich Presence. Application ID лучше задавать в content/launcher.json → discord.clientId
   // (тогда его можно сменить без выпуска лаунчера). Здесь — запасное значение.
-  DISCORD_CLIENT_ID: '',
+  DISCORD_CLIENT_ID: '1571910440064393296',
   DISCORD_LARGE_IMAGE: `${RAW_BASE}/build/icon.png`,
 
   // Как часто опрашивать сервер (онлайн / пинг), мс.

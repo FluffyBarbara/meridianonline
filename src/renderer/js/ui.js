@@ -73,11 +73,14 @@ let onModalClose = null;
 
 export function openModal(html, { onClose, dismissable = true } = {}) {
   const modal = $('#modal');
-  $('#modalDialog').innerHTML = html;
+  const old = $('#modalDialog');
+  const dialog = old.cloneNode(false); // новый элемент без старых обработчиков
+  old.replaceWith(dialog);
+  dialog.innerHTML = html;
   modal.hidden = false;
   modal.dataset.dismissable = dismissable ? '1' : '';
   onModalClose = onClose || null;
-  return $('#modalDialog');
+  return dialog;
 }
 
 export function closeModal() {

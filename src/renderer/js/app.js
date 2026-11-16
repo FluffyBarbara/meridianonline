@@ -33,6 +33,7 @@ function paintStaticIcons() {
   $('#fixBtn').innerHTML = `${icon('wrench')}Фикс игры`;
   const rows = {
     fix: ['shield-check', 'Фикс игры — если вылетает или не запускается'],
+    report: ['newspaper', 'Отчёт для поддержки'],
     'open-folder': ['folder-open', 'Открыть папку игры'],
     verify: ['wrench', 'Переустановить игру'],
     settings: ['settings', 'Настройки лаунчера'],
@@ -310,7 +311,9 @@ function computeView() {
 
   Object.assign(view, {
     title: 'Игра готова к запуску', pct: '100%', bar: 100,
-    info: g.installedVersion && g.installedVersion !== '0.0.0' ? `Версия сборки ${esc(g.installedVersion)}` : '',
+    info: state.settings.safeMode
+      ? 'Безопасный запуск: графические моды отключены'
+      : (g.installedVersion && g.installedVersion !== '0.0.0' ? `Версия сборки ${esc(g.installedVersion)}` : ''),
   });
   Object.assign(view.button, { label: 'Войти в игру', icon: 'play', action: 'launch', disabled: state.launching });
   if (state.launching) view.button.label = 'Запуск…';
@@ -506,17 +509,69 @@ function bindStatus() {
     renderStatus();
   });
   api.game.onExited(({ seconds, neverStarted }) => {
-    if (neverStarted || seconds < 120) {
-      toast({
-        title: neverStarted ? 'Игра не запустилась' : `Игра закрылась через ${seconds} с`,
-        text: 'Если это был вылет — нажмите «Фикс игры», лаунчер попробует всё починить.',
-        type: 'warn',
-        timeout: 15000,
-        action: { label: 'Фикс игры', onClick: openFix },
-      });
-    }
+    if (neverStarted || seconds < 120) showCrashHelp(neverStarted ? null : seconds);
   });
   $('#fixBtn').addEventListener('click', openFix);
+}
+
+// ═════════════════ Помощь при вылете ═════════════════
+function showCrashHelp(seconds) {
+  const safe = state.settings.safeMode;
+  const dlg = openModal(`
+    <div class="modal__head">
+      <div class="modal__icon">${icon('triangle-alert')}</div>
+      <div>
+        <div class="modal__title">${seconds == null ? 'Игра не запустилась' : `Игра закрылась через ${seconds} с`}</div>
+        <div class="modal__sub">Если это был вылет — попробуйте по порядку</div>
+      </div>
+      <button class="icon-btn modal__x" data-close>${icon('x')}</button>
+    </div>
+    <div class="modal__body">
+      <div class="crash-steps">
+        <button class="card crash-step" data-do="fix">
+          <span class="crash-step__n">1</span>
+          <span><span class="crash-step__t">Фикс игры</span><span class="crash-step__d">Проверит файлы, сбросит настройки GTA, переустановит DirectX и Visual C++</span></span>
+        </button>
+        <button class="card crash-step" data-do="safe">
+          <span class="crash-step__n">2</span>
+          <span><span class="crash-step__t">${safe ? 'Безопасный запуск уже включён' : 'Безопасный запуск'}</span><span class="crash-step__d">${safe ? 'Графические моды и так отключены — переходите к шагу 3' : 'Запустить игру без графических модов (сглаживание, частота экрана, широкоформат)'}</span></span>
+        </button>
+        <button class="card crash-step" data-do="report">
+          <span class="crash-step__n">3</span>
+          <span><span class="crash-step__t">Отчёт для поддержки</span><span class="crash-step__d">Соберёт данные о компьютере и логи вылета в файл на рабочем столе — отправьте его администрации</span></span>
+        </button>
+      </div>
+    </div>`);
+  dlg.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-do]');
+    if (!b) return;
+    closeModal();
+    if (b.dataset.do === 'fix') openFix();
+    if (b.dataset.do === 'report') makeReport();
+    if (b.dataset.do === 'safe') {
+      if (!safe) {
+        state.settings = await api.settings.set({ safeMode: true });
+        renderStatus();
+        toast({ title: 'Безопасный запуск включён', text: 'Отключить его можно в настройках.', type: 'success' });
+      }
+      runAction('launch');
+    }
+  });
+}
+
+async function makeReport() {
+  toast({ title: 'Собираем отчёт…', text: 'Это займёт несколько секунд.', timeout: 3000 });
+  const r = await api.support.report();
+  if (r.ok) {
+    toast({
+      title: 'Отчёт сохранён на рабочем столе',
+      text: `${r.file.split(/[\\/]/).pop()} — отправьте этот файл в поддержку. Текст отчёта также скопирован в буфер обмена.`,
+      type: 'success',
+      timeout: 12000,
+    });
+  } else {
+    toast({ title: 'Не удалось создать отчёт', text: r.error, type: 'error' });
+  }
 }
 
 // ═════════════════ Фикс игры ═════════════════
@@ -596,6 +651,7 @@ async function runFix(options) {
       ${res.needReinstall ? '<p class="prereq-note">Повреждённые файлы восстанавливаются перекачкой сборки (около 2 ГБ). Скорее всего, их удалил антивирус — после перекачки он больше не помешает, если вы добавили папку в исключения.</p>' : ''}
     </div>
     <div class="modal__foot">
+      <button class="btn" data-report>${icon('newspaper')}Отчёт для поддержки</button>
       <button class="btn" data-close>Закрыть</button>
       ${res.needReinstall
         ? `<button class="btn btn--primary" data-reinstall>${icon('download')}Перекачать игру</button>`
@@ -607,6 +663,7 @@ async function runFix(options) {
     runAction('install');
   });
   dlg.querySelector('[data-play]')?.addEventListener('click', () => { closeModal(); runAction('launch'); });
+  dlg.querySelector('[data-report]')?.addEventListener('click', () => { closeModal(); makeReport(); });
 }
 
 async function openFolder() {
@@ -807,6 +864,7 @@ function bindTabs() {
     if (b.dataset.action === 'settings') openSettings();
     if (b.dataset.action === 'verify') reinstallGame();
     if (b.dataset.action === 'fix') openFix();
+    if (b.dataset.action === 'report') makeReport();
   }));
 }
 
@@ -889,6 +947,20 @@ function openSettings() {
             ${after.map(([v, l]) => `<button data-v="${v}" class="${s.afterLaunch === v ? 'is-active' : ''}">${l}</button>`).join('')}
           </div>
         </div>
+        <div class="set-row">
+          <div class="set-row__text">
+            <div class="set-row__label">Безопасный запуск</div>
+            <div class="set-row__desc">Запускать игру без графических модов (сглаживание, частота экрана, широкоформат, небо). Включите, если игра вылетает при запуске</div>
+          </div>
+          <label class="switch"><input type="checkbox" data-set="safeMode" ${s.safeMode ? 'checked' : ''}><span></span></label>
+        </div>
+        <div class="set-row">
+          <div class="set-row__text">
+            <div class="set-row__label">Отчёт для поддержки</div>
+            <div class="set-row__desc">Данные о компьютере и логи вылета — в файл на рабочем столе</div>
+          </div>
+          <button class="btn btn--sm" data-set="report">${icon('newspaper')}Создать</button>
+        </div>
       </div>
 
       <div class="set-group">
@@ -932,6 +1004,7 @@ function openSettings() {
       if (act === 'choose') { closeModal(); await runAction('choose-dir'); openSettings(); }
       if (act === 'reinstall') { closeModal(); reinstallGame(); }
       if (act === 'fix') { closeModal(); openFix(); }
+      if (act === 'report') { closeModal(); makeReport(); }
       if (act === 'prereqs') { closeModal(); await installPrereqs(); }
       if (act === 'check-update') { api.updater.check(); b.querySelector('.ico')?.classList.add('spin'); }
     }
@@ -957,6 +1030,7 @@ function openSettings() {
     if (!inp) return;
     state.settings = await api.settings.set({ [inp.dataset.set]: inp.checked });
     if (inp.dataset.set === 'animatedBackground') applyAnimation();
+    if (inp.dataset.set === 'safeMode') renderStatus();
   });
 }
 
