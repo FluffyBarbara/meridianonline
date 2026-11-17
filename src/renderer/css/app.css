@@ -53,10 +53,32 @@ input { font: inherit; color: inherit; }
 
 /* ─────────────── Скролл ─────────────── */
 .scroll { overflow-y: auto; overflow-x: hidden; }
-.scroll::-webkit-scrollbar { width: 6px; }
-.scroll::-webkit-scrollbar-track { background: transparent; }
-.scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 6px; }
-.scroll::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.22); }
+
+/* Фирменная полоса прокрутки для всех прокручиваемых блоков (вместо стандартной виндовской) */
+::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
+::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-track {
+  margin: 12px 0;
+  border: 3px solid transparent;
+  border-radius: 10px;
+  background: rgba(95, 168, 255, 0.07);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb {
+  min-height: 42px;
+  border: 3px solid transparent;
+  border-radius: 10px;
+  background: linear-gradient(180deg, var(--accent-2), var(--accent)) padding-box;
+  box-shadow: inset 0 0 0 1px rgba(159, 212, 255, 0.18);
+}
+::-webkit-scrollbar-thumb:hover {
+  border-width: 2px;
+  background: linear-gradient(180deg, var(--accent-3), var(--accent-2) 45%, var(--accent)) padding-box;
+}
+::-webkit-scrollbar-thumb:active {
+  background: linear-gradient(180deg, var(--accent-3), var(--accent-2)) padding-box;
+}
 
 /* ═══════════════ Фоновая сцена ═══════════════ */
 .scene { position: fixed; inset: 0; overflow: hidden; z-index: 0; }
