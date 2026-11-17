@@ -41,6 +41,10 @@ function bundledPath(rel) {
 }
 
 async function loadRemoteJson({ urls, cacheName, bundled }) {
+  // Режим разработчика: настройки только из локальных файлов (для проверки без выкладки в репозиторий)
+  if (!app.isPackaged && process.env.MERIDIAN_LOCAL_CONTENT) {
+    return { data: JSON.parse(fs.readFileSync(bundledPath(bundled), 'utf8')), source: 'remote' };
+  }
   let lastErr = null;
   for (const url of urls) {
     try {

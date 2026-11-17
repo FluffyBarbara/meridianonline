@@ -261,7 +261,9 @@ async function gameStatus(force = false) {
     latestVersion,
     published,
     // пофайловый режим: версия — метка сборки, любое отличие = обновление (качается только разница)
-    needsUpdate: installed && published && !!current && (filesMode ? current !== latestVersion : cmpVersion(manifest.version, current) > 0),
+    needsUpdate: installed && published && (filesMode ? current !== latestVersion : (!!current && cmpVersion(manifest.version, current) > 0)),
+    // файлы есть, но синхронизация с хранилищем не завершалась (оборвалась или папка без отметки)
+    incomplete: filesMode && installed && !current,
     downloadSize,
     filesMode,
     unpackedSize: filesMode ? downloadSize : (manifest.unpackedSize || null),
