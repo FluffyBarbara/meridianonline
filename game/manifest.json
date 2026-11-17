@@ -55,5 +55,9 @@
     "vc2015",
     "directplay"
   ],
-  "publishedAt": "2026-11-16T14:39:25.804Z"
+  "publishedAt": "2026-11-16T14:39:25.804Z",
+  "files": {
+    "manifestUrl": "https://firsts3.ru/meridian-client/manifest.json",
+    "baseUrl": "https://firsts3.ru/meridian-client/files/"
+  }
 }

@@ -9,7 +9,7 @@ const config = require('./config');
 const settings = require('./settings');
 const updater = require('./updater');
 const discord = require('./discord');
-const { loadRemoteJson } = require('./content');
+const { loadRemoteJson, fetchJson } = require('./content');
 const { queryServer } = require('./game/query');
 const { GameInstaller } = require('./game/installer');
 const { Prereqs } = require('./game/prereqs');
@@ -21,6 +21,7 @@ const { launchGame, isInstalled, isGameRunning, getGamePid, validateNickname } =
 const { GameMemory } = require('./game/memory');
 const { PresenceEngine } = require('./game/presence');
 const cefpath = require('./game/cefpath');
+const filesync = require('./game/filesync');
 
 const DEV = process.argv.includes('--dev');
 const RENDERER = path.join(__dirname, '..', 'renderer');
@@ -152,6 +153,24 @@ async function getContent(force = false) {
       urls: config.CONTENT_URLS, cacheName: 'launcher', bundled: 'content/launcher.json',
     });
     contentCache = { ...defaultContent(), ...data, _source: source };
+    // Новости из хранилища (news.json в бакете), формат { news: [ { title, text, date: "15.11.2026" } ] }
+    if (contentCache.newsUrl) {
+      try {
+        const remote = await fetchJson(contentCache.newsUrl);
+        const list = Array.isArray(remote) ? remote : remote?.news;
+        if (Array.isArray(list) && list.length) {
+          const iso = (d) => {
+            const m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})/.exec(String(d || ''));
+            return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : d;
+          };
+          contentCache.news = list
+            .filter((n) => n && n.title)
+            .map((n) => ({ title: n.title, text: n.text || '', date: iso(n.date), tag: n.tag || '', url: n.url || '', image: n.image || '' }));
+        }
+      } catch (err) {
+        log.warn('[content] новости из хранилища недоступны:', err.message);
+      }
+    }
   } catch {
     contentCache = { ...defaultContent(), _source: 'default' };
   }
@@ -175,7 +194,26 @@ async function getManifest(force = false) {
 }
 
 /** Эталонный список файлов сборки (для «Фикса игры»). null — если не совпадает с версией сборки. */
+// Пофайловый манифест хранилища (game/manifest.json → "files"), кешируется на 2 минуты
+let filesManifestCache = { at: 0, data: null };
+const isFilesMode = (m) => !!(m?.files?.baseUrl && m?.files?.manifestUrl);
+async function getFilesManifest(manifest, force = false) {
+  if (!isFilesMode(manifest)) return null;
+  if (!force && filesManifestCache.data && Date.now() - filesManifestCache.at < 120000) return filesManifestCache.data;
+  try {
+    filesManifestCache = { at: Date.now(), data: await filesync.fetchManifest(manifest.files.manifestUrl) };
+  } catch (err) {
+    log.warn('[files] манифест хранилища недоступен:', err.message);
+  }
+  return filesManifestCache.data;
+}
+
 async function getFileList(manifest) {
+  // В пофайловом режиме эталон — манифест хранилища
+  if (isFilesMode(manifest)) {
+    const fm = await getFilesManifest(manifest);
+    return fm ? { version: fm.version, files: fm.files.map((f) => [f.path, f.size, f.sha256]) } : null;
+  }
   try {
     const { data } = await loadRemoteJson({
       urls: config.GAME_FILES_URLS, cacheName: 'files', bundled: 'game/files.json',
@@ -208,18 +246,25 @@ async function gameStatus(force = false) {
   const gameDir = settings.get('gameDir');
   const installed = isInstalled(gameDir, manifest);
   const current = installed ? installedVersion(gameDir) : null;
-  const published = Array.isArray(manifest.archives) && manifest.archives.length > 0;
-  const downloadSize = (manifest.archives || []).reduce((s, a) => s + (a.size || 0), 0);
+  const filesMode = isFilesMode(manifest);
+  const remoteFiles = filesMode ? await getFilesManifest(manifest, force) : null;
+  const published = filesMode ? !!remoteFiles : (Array.isArray(manifest.archives) && manifest.archives.length > 0);
+  const downloadSize = filesMode
+    ? (remoteFiles ? remoteFiles.files.reduce((s, f) => s + f.size, 0) : 0)
+    : (manifest.archives || []).reduce((s, a) => s + (a.size || 0), 0);
+  const latestVersion = filesMode ? (remoteFiles?.version || null) : (manifest.version || null);
   const partial = published ? await installer.partialBytes(gameDir, manifest) : 0;
   return {
     gameDir,
     installed,
     installedVersion: current,
-    latestVersion: manifest.version || null,
+    latestVersion,
     published,
-    needsUpdate: installed && published && !!current && cmpVersion(manifest.version, current) > 0,
+    // пофайловый режим: версия — метка сборки, любое отличие = обновление (качается только разница)
+    needsUpdate: installed && published && !!current && (filesMode ? current !== latestVersion : cmpVersion(manifest.version, current) > 0),
     downloadSize,
-    unpackedSize: manifest.unpackedSize || null,
+    filesMode,
+    unpackedSize: filesMode ? downloadSize : (manifest.unpackedSize || null),
     partialBytes: partial,
     installerState: installer.progress,
     online: manifest._source === 'remote',
@@ -334,6 +379,7 @@ function updatePresence(force = false) {
 }
 
 let lastLaunch = null;
+let deepNextInstall = false;
 
 // Драйвер видеокарты: результат «всё хорошо» кешируем, проблему перепроверяем (вдруг уже поставили драйвер)
 let gpuCache = null;
@@ -414,7 +460,10 @@ function registerIpc() {
   ipcMain.handle('game:install', async () => {
     const manifest = await getManifest(true);
     const gameDir = settings.get('gameDir');
-    const result = await installer.install(manifest, gameDir);
+    const deep = deepNextInstall;
+    deepNextInstall = false;
+    const result = await installer.install(manifest, gameDir, { deep });
+    if (result.ok) filesManifestCache.at = 0;
     if (result.ok) {
       settings.set({ installedVersion: result.version });
       // Сразу ставим DirectX / Visual C++, если их нет
@@ -557,6 +606,7 @@ function registerIpc() {
 
   ipcMain.handle('game:reinstall', async () => {
     const dir = settings.get('gameDir');
+    deepNextInstall = true; // в пофайловом режиме — перепроверить хеши всех файлов и докачать испорченные
     try { fs.unlinkSync(path.join(dir, 'meridian.json')); } catch {}
     settings.set({ installedVersion: null });
     return true;

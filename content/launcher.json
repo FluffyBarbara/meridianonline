@@ -11,6 +11,7 @@
       "maxPlayers": 50
     }
   ],
+  "newsUrl": "https://firsts3.ru/meridian-client/news.json",
   "links": {
     "forum": "https://forum.meridian-rp.ru/index.php",
     "site": "https://meridian-rp.ru/",
