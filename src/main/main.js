@@ -2,7 +2,7 @@
 
 const path = require('path');
 const fs = require('fs');
-const { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu, nativeImage, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu, nativeImage, clipboard, globalShortcut } = require('electron');
 
 const log = require('electron-log/main');
 const config = require('./config');
@@ -22,6 +22,7 @@ const { GameMemory } = require('./game/memory');
 const { PresenceEngine } = require('./game/presence');
 const cefpath = require('./game/cefpath');
 const filesync = require('./game/filesync');
+const { KillSwitch } = require('./game/killswitch');
 
 const DEV = process.argv.includes('--dev');
 const RENDERER = path.join(__dirname, '..', 'renderer');
@@ -37,6 +38,18 @@ let gameRunning = false;
 const installer = new GameInstaller();
 const prereqs = new Prereqs(path.join(app.getPath('userData'), 'redist'));
 const fixer = new GameFixer({ prereqs, documentsDir: app.getPath('documents') });
+
+// Сочетание клавиш «закрыть зависшую игру» (активно только пока игра запущена)
+let gameKilled = false;
+let watchedManifest = null;
+const killSwitch = new KillSwitch({
+  isRunning: () => isGameRunning(watchedManifest),
+  onResult: (r) => {
+    if (r.ok) gameKilled = true;
+    else showMain();
+    send('game:killed', r);
+  },
+});
 
 // ───────────────────────── Один экземпляр ─────────────────────────
 if (!app.requestSingleInstanceLock()) {
@@ -134,6 +147,7 @@ function createTray() {
     tray.setToolTip(config.APP_NAME);
     tray.setContextMenu(Menu.buildFromTemplate([
       { label: 'Открыть лаунчер', click: showMain },
+      { label: 'Закрыть зависшую игру', click: () => { if (gameRunning) killSwitch.trigger('tray'); } },
       { type: 'separator' },
       { label: 'Выход', click: () => app.quit() },
     ]));
@@ -401,7 +415,11 @@ function watchGame(manifest, server) {
   const startedAt = Date.now();
   gameRunning = true;
   gameSession = { server, startedAt };
+  gameKilled = false;
+  watchedManifest = manifest;
+  const hk = killSwitch.arm(settings.get('killHotkey'));
   send('game:running', true);
+  send('game:hotkey', hk);
   updatePresence(true);
   startPresenceLoop(manifest);
   watchTimer = setInterval(async () => {
@@ -412,6 +430,9 @@ function watchGame(manifest, server) {
       clearInterval(watchTimer);
       gameRunning = false;
       gameSession = null;
+      killSwitch.disarm();
+      const killed = gameKilled;
+      gameKilled = false;
       stopPresenceLoop();
       send('game:running', false);
       updatePresence(true);
@@ -420,9 +441,13 @@ function watchGame(manifest, server) {
       if (lastLaunch) Object.assign(lastLaunch, { playedSeconds: played, processSeen: seen });
       log.info(`[launch] игра закрылась: ${seen ? `через ${played} с` : 'процесс не появился'}`);
       safeMode.restore(settings);
-      send('game:exited', { seconds: played, neverStarted: !seen, safeMode: settings.get('safeMode') === true });
+      if (killed) log.info('[launch] игра была закрыта сочетанием клавиш');
+      send('game:exited', { seconds: played, neverStarted: !seen, safeMode: settings.get('safeMode') === true, killed });
+      const after = settings.get('afterLaunch');
+      // «Закрыть»: лаунчер ждал в трее ради сочетания клавиш — теперь выходим (после зависания — показываем окно)
+      if (after === 'close' && !killed) { app.quit(); return; }
       // Не разворачиваем лаунчер, если процесс так и не нашли: это могло бы украсть фокус у игры
-      if (seen && settings.get('afterLaunch') !== 'keep') showMain();
+      if (seen && (after !== 'keep' || killed)) showMain();
     }
   }, 3000);
 }
@@ -452,6 +477,7 @@ function registerIpc() {
   ipcMain.handle('settings:set', (_e, patch) => {
     const res = settings.set(patch);
     if (patch && 'discordPresence' in patch) updatePresence(true);
+    if (patch && 'killHotkey' in patch && gameRunning) send('game:hotkey', killSwitch.arm(patch.killHotkey));
     return res;
   });
 
@@ -521,7 +547,14 @@ function registerIpc() {
       return { ok: false, error: err.message };
     }
     watchGame(manifest, server);
-    if (after === 'close') setTimeout(() => app.quit(), 3000);
+    // «Закрыть»: если включено сочетание «закрыть зависшую игру», лаунчер ждёт в трее до выхода из игры
+    if (after === 'close' && settings.get('killHotkey') === 'off') setTimeout(() => app.quit(), 3000);
+    return { ok: true };
+  });
+
+  ipcMain.handle('game:kill', async () => {
+    if (!gameRunning) return { ok: false, error: 'Игра не запущена' };
+    await killSwitch.trigger('launcher');
     return { ok: true };
   });
 
@@ -673,6 +706,10 @@ app.whenReady().then(async () => {
 
   // Фоновая проверка обновлений лаунчера каждые 30 минут
   setInterval(() => updater.check(), 30 * 60 * 1000);
+});
+
+app.on('will-quit', () => {
+  try { globalShortcut.unregisterAll(); } catch {}
 });
 
 app.on('before-quit', () => {

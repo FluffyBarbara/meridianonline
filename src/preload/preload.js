@@ -38,6 +38,9 @@ contextBridge.exposeInMainWorld('meridian', {
     onProgress: on('game:progress'),
     onRunning: on('game:running'),
     onExited: on('game:exited'),
+    onKilled: on('game:killed'),
+    onHotkey: on('game:hotkey'),
+    kill: () => ipcRenderer.invoke('game:kill'),
     fix: (options) => ipcRenderer.invoke('game:fix', options),
   },
   prereqs: {
