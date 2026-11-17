@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const { spawn } = require('child_process');
 const { EventEmitter } = require('events');
 const { Readable } = require('stream');
+const filesync = require('./filesync');
 
 /**
  * Установщик / обновлятор сборки игры.
@@ -69,6 +70,15 @@ async function sha256File(file, onProgress) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/** Удаляет недокачанные .part-файлы пофайловой загрузки. */
+async function removeParts(dir) {
+  for (const e of await fsp.readdir(dir, { withFileTypes: true }).catch(() => [])) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) await removeParts(p);
+    else if (e.name.endsWith('.part')) await fsp.unlink(p).catch(() => {});
+  }
+}
+
 class GameInstaller extends EventEmitter {
   constructor() {
     super();
@@ -90,6 +100,7 @@ class GameInstaller extends EventEmitter {
 
   /** Сколько уже скачано (для отображения при паузе). */
   async partialBytes(gameDir, manifest) {
+    if (manifest?.files?.baseUrl) return filesync.partialBytes(gameDir);
     let sum = 0;
     for (const a of manifest.archives || []) {
       const base = path.join(gameDir, DOWNLOAD_DIR, archiveName(a));
@@ -111,6 +122,7 @@ class GameInstaller extends EventEmitter {
   async discard(gameDir) {
     if (this.busy) return this.cancel();
     await fsp.rm(path.join(gameDir, DOWNLOAD_DIR), { recursive: true, force: true }).catch(() => {});
+    await removeParts(gameDir);
     this.setState('idle');
   }
 
@@ -120,8 +132,9 @@ class GameInstaller extends EventEmitter {
     try { this.child?.kill(); } catch {}
   }
 
-  async install(manifest, gameDir) {
+  async install(manifest, gameDir, opts = {}) {
     if (this.busy) throw new Error('Установка уже идёт');
+    if (manifest?.files?.baseUrl && manifest?.files?.manifestUrl) return this.installFiles(manifest, gameDir, opts);
     const archives = manifest.archives || [];
     if (!archives.length) throw new Error('Сборка игры ещё не опубликована на сервере обновлений');
 
@@ -193,6 +206,64 @@ class GameInstaller extends EventEmitter {
     } finally {
       this.abort = null;
       this.child = null;
+    }
+  }
+
+  /**
+   * Пофайловая установка/обновление из хранилища (game/manifest.json → "files").
+   * Качает только отсутствующие и изменённые файлы. opts.deep — перепроверить хеши всех файлов.
+   */
+  async installFiles(manifest, gameDir, opts = {}) {
+    this.pausing = false;
+    this.cancelling = false;
+    this.abort = new AbortController();
+    try {
+      this.setState('preparing');
+      try {
+        await fsp.mkdir(gameDir, { recursive: true });
+        const probe = path.join(gameDir, '.meridian-write-test');
+        await fsp.writeFile(probe, 'ok');
+        await fsp.unlink(probe);
+      } catch {
+        const e = new Error(`Нет доступа к папке «${gameDir}». Выберите другую папку в настройках.`);
+        e.code = 'EACCES';
+        throw e;
+      }
+      const report = (state, extra) => this.setState(state, extra);
+      const result = await filesync.sync(manifest.files, gameDir, report, this.abort.signal, {
+        deep: !!opts.deep,
+        beforeDownload: async (total) => {
+          const free = await freeSpace(gameDir);
+          const need = total + 200 * 1024 * 1024;
+          if (free < need) {
+            const e = new Error(`Недостаточно места на диске: нужно ${(need / 1073741824).toFixed(1)} ГБ, свободно ${(free / 1073741824).toFixed(1)} ГБ.`);
+            e.code = 'ENOSPC';
+            e.fatal = true;
+            throw e;
+          }
+        },
+      });
+      await fsp.writeFile(
+        path.join(gameDir, 'meridian.json'),
+        JSON.stringify({ version: result.version, source: 'files', installedAt: new Date().toISOString() }, null, 2),
+      );
+      this.setState('done', { version: result.version, downloadedFiles: result.downloadedFiles, downloadedBytes: result.downloadedBytes });
+      return { ok: true, version: result.version, downloadedFiles: result.downloadedFiles, downloadedBytes: result.downloadedBytes };
+    } catch (err) {
+      if (this.pausing) {
+        const downloaded = await filesync.partialBytes(gameDir);
+        this.setState('paused', { downloaded, total: null, percent: 0 });
+        return { ok: false, paused: true };
+      }
+      if (this.cancelling) {
+        await removeParts(gameDir);
+        this.setState('idle');
+        return { ok: false, cancelled: true };
+      }
+      this.setState('error', { message: err.message, code: err.code });
+      return { ok: false, error: err.message };
+    } finally {
+      this.abort = null;
     }
   }
 

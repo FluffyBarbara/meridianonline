@@ -190,6 +190,9 @@ function showWelcome() {
 }
 
 // ═════════════════ Статус и главная кнопка ═════════════════
+/** «14.11.2026 21:53:57,47» → «14.11.2026»; «1.0.0» остаётся как есть */
+const fmtVer = (v) => String(v ?? '').trim().split(/[\s,]+/)[0] || '—';
+
 const BUSY = ['preparing', 'downloading', 'verifying', 'extracting', 'prereq-download', 'prereq-install', 'fixing'];
 
 function computeView() {
@@ -219,7 +222,9 @@ function computeView() {
       view.title = 'Подготовка к загрузке…';
       view.mode = 'indeterminate';
     } else if (p.state === 'downloading') {
-      view.title = p.count > 1 ? `Загрузка игры · часть ${p.index}/${p.count}` : 'Загрузка игры';
+      view.title = p.mode === 'files'
+        ? `Загрузка игры · файл ${Math.min(p.index, p.count)} из ${p.count}`
+        : (p.count > 1 ? `Загрузка игры · часть ${p.index}/${p.count}` : 'Загрузка игры');
       view.pct = `${(p.percent || 0).toFixed(1).replace('.', ',')}%`;
       view.bar = p.percent || 0;
       const parts = [];
@@ -304,9 +309,9 @@ function computeView() {
 
   if (g.needsUpdate) {
     Object.assign(view, {
-      title: `Доступно обновление ${esc(g.latestVersion)}`,
+      title: `Доступно обновление ${esc(fmtVer(g.latestVersion))}`,
       bar: 0, pct: '',
-      info: `Текущая версия ${esc(g.installedVersion)} · ${bytes(g.downloadSize)}`,
+      info: g.filesMode ? `Текущая версия ${esc(fmtVer(g.installedVersion))} · скачаются только изменённые файлы` : `Текущая версия ${esc(fmtVer(g.installedVersion))} · ${bytes(g.downloadSize)}`,
     });
     Object.assign(view.button, { label: 'Обновить игру', icon: 'circle-arrow-up', action: 'install', cls: 'is-update' });
     return view;
@@ -326,7 +331,7 @@ function computeView() {
     title: 'Игра готова к запуску', pct: '100%', bar: 100,
     info: state.settings.safeMode
       ? 'Безопасный запуск: графические моды отключены'
-      : (g.installedVersion && g.installedVersion !== '0.0.0' ? `Версия сборки ${esc(g.installedVersion)}` : ''),
+      : (g.installedVersion && g.installedVersion !== '0.0.0' ? `Версия сборки ${esc(fmtVer(g.installedVersion))}` : ''),
   });
   Object.assign(view.button, { label: 'Войти в игру', icon: 'play', action: 'launch', disabled: state.launching });
   if (state.launching) view.button.label = 'Запуск…';
@@ -367,7 +372,9 @@ async function runAction(action) {
       renderStatus();
       const res = await api.game.install();
       if (res.ok) {
-        toast({ title: 'Игра установлена', text: 'Можно заходить на сервер!', type: 'success' });
+        if (res.downloadedFiles === 0) toast({ title: 'Все файлы игры в порядке', text: 'Скачивать ничего не пришлось.', type: 'success' });
+        else if (res.downloadedFiles != null) toast({ title: 'Игра готова', text: `Скачано файлов: ${res.downloadedFiles} (${bytes(res.downloadedBytes)}). Можно заходить на сервер!`, type: 'success' });
+        else toast({ title: 'Игра установлена', text: 'Можно заходить на сервер!', type: 'success' });
         state.progress = null;
         reportPrereqs(res.prereqs);
       } else if (res.cancelled) {
@@ -739,7 +746,7 @@ async function runFix(options) {
     <div class="modal__head">
       <div class="modal__icon">${icon(res.needReinstall ? 'triangle-alert' : 'circle-check')}</div>
       <div>
-        <div class="modal__title">${res.needReinstall ? 'Нужно перекачать игру' : 'Фикс завершён'}</div>
+        <div class="modal__title">${res.needReinstall ? (state.game?.filesMode ? 'Нужно восстановить файлы' : 'Нужно перекачать игру') : 'Фикс завершён'}</div>
         <div class="modal__sub">${res.needReinstall ? `Найдены повреждённые или удалённые файлы: ${res.damaged}` : 'Запустите игру ещё раз'}</div>
       </div>
       <button class="icon-btn modal__x" data-close>${icon('x')}</button>
@@ -752,14 +759,14 @@ async function runFix(options) {
             <div><div class="fix-step__title">${esc(s.title)}</div><div class="fix-step__text">${esc(s.text)}</div></div>
           </div>`).join('')}
       </div>
-      ${res.needReinstall ? '<p class="prereq-note">Повреждённые файлы восстанавливаются перекачкой сборки (около 2 ГБ). Скорее всего, их удалил антивирус — после перекачки он больше не помешает, если вы добавили папку в исключения.</p>' : ''}
+      ${res.needReinstall && state.game?.filesMode ? '<p class="prereq-note">Лаунчер скачает из хранилища только повреждённые и удалённые файлы — это быстро. Скорее всего, их удалил антивирус: после восстановления он больше не помешает, если вы добавили папку в исключения.</p>' : ''}${res.needReinstall && !state.game?.filesMode ? '<p class="prereq-note">Повреждённые файлы восстанавливаются перекачкой сборки (около 2 ГБ). Скорее всего, их удалил антивирус — после перекачки он больше не помешает, если вы добавили папку в исключения.</p>' : ''}
     </div>
     <div class="modal__foot">
       <button class="btn" data-report>${icon('newspaper')}Отчёт для поддержки</button>
       ${res.driver ? `<button class="btn btn--primary" data-driver>${icon('download')}Установить драйвер</button>` : ''}
       <button class="btn" data-close>Закрыть</button>
       ${res.needReinstall
-        ? `<button class="btn btn--primary" data-reinstall>${icon('download')}Перекачать игру</button>`
+        ? `<button class="btn btn--primary" data-reinstall>${icon('download')}${state.game?.filesMode ? 'Восстановить файлы' : 'Перекачать игру'}</button>`
         : `<button class="btn btn--primary" data-play>${icon('play')}Войти в игру</button>`}
     </div>`);
   dlg.querySelector('[data-reinstall]')?.addEventListener('click', async () => {
@@ -1015,7 +1022,7 @@ function openSettings() {
         <div class="set-row">
           <div class="set-row__text">
             <div class="set-row__label">Версия сборки</div>
-            <div class="set-row__desc">${g.installed ? `Установлена ${esc(g.installedVersion || '—')}` : 'Не установлена'}${g.latestVersion && g.published ? ` · последняя ${esc(g.latestVersion)}` : ''}</div>
+            <div class="set-row__desc">${g.installed ? `Установлена ${esc(fmtVer(g.installedVersion))}` : 'Не установлена'}${g.latestVersion && g.published ? ` · последняя ${esc(fmtVer(g.latestVersion))}` : ''}</div>
           </div>
           <button class="btn btn--sm" data-set="reinstall">${icon('rotate-ccw')}Переустановить</button>
         </div>
@@ -1238,7 +1245,7 @@ async function boot() {
   if (!state.settings.nickname) showWelcome();
 
   if (state.settings.autoUpdateGame && state.game.needsUpdate && !state.running) {
-    toast({ title: `Обновление игры ${state.game.latestVersion}`, text: 'Загрузка началась автоматически.' });
+    toast({ title: `Обновление игры ${fmtVer(state.game.latestVersion)}`, text: 'Загрузка началась автоматически.' });
     runAction('install');
   }
 
