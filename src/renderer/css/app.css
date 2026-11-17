@@ -793,6 +793,43 @@ input { font: inherit; color: inherit; }
 .segmented button:hover { color: var(--text); }
 .segmented button.is-active { background: var(--accent); color: #fff; box-shadow: 0 4px 12px -4px var(--accent-glow); }
 
+/* Своё сочетание клавиш */
+.hotkey-ctl { display: flex; align-items: center; gap: 8px; flex: none; }
+.hotkey {
+  display: inline-flex; align-items: center; gap: 10px; height: 38px; padding: 0 12px 0 8px;
+  border-radius: 11px; border: 1px solid var(--line-strong); background: rgba(255, 255, 255, 0.04);
+  color: var(--text-3); transition: border-color .2s, background .2s, box-shadow .2s, color .2s;
+}
+.hotkey .ico { width: 14px; height: 14px; }
+.hotkey:hover:not(:disabled) { border-color: rgba(95, 168, 255, 0.5); color: var(--accent-3); background: rgba(59, 123, 255, 0.08); }
+.hotkey.is-off { opacity: .45; cursor: default; }
+.hotkey.is-recording {
+  border-color: var(--accent-2); color: var(--accent-3); background: rgba(59, 123, 255, 0.14);
+  box-shadow: 0 0 0 3px rgba(59, 123, 255, 0.22), 0 0 22px rgba(59, 123, 255, 0.35);
+  animation: hk-pulse 1.4s ease-in-out infinite;
+}
+@keyframes hk-pulse { 50% { box-shadow: 0 0 0 5px rgba(59, 123, 255, 0.12), 0 0 28px rgba(59, 123, 255, 0.45); } }
+.hotkey__keys { display: inline-flex; align-items: center; gap: 4px; min-width: 96px; justify-content: center; }
+.hotkey__wait { font-size: 12px; font-weight: 700; color: var(--accent-3); white-space: nowrap; }
+.key {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 24px; padding: 0 7px;
+  border-radius: 6px; border: 1px solid rgba(95, 168, 255, 0.35); border-bottom-width: 2px;
+  background: linear-gradient(180deg, rgba(95, 168, 255, 0.16), rgba(59, 123, 255, 0.08));
+  color: var(--text); font: 700 11.5px var(--font); white-space: nowrap;
+}
+.key-plus { font-style: normal; font-size: 11px; color: var(--text-3); }
+.hotkey-reset {
+  width: 32px; height: 32px; display: grid; place-items: center; border-radius: 9px;
+  color: var(--text-3); border: 1px solid transparent; transition: color .2s, border-color .2s, background .2s;
+}
+.hotkey-reset .ico { width: 15px; height: 15px; }
+.hotkey-reset:hover { color: var(--accent-3); border-color: var(--line-strong); background: rgba(255, 255, 255, 0.04); }
+.hotkey-hint { margin-top: 7px; font-size: 12px; line-height: 1.45; color: var(--text-2); }
+.hotkey-hint b { color: var(--text); }
+.hotkey-hint--ok { color: var(--green); }
+.hotkey-hint--error { color: var(--red); }
+.hotkey-hint--info { color: var(--accent-3); }
+
 .switch { position: relative; width: 44px; height: 26px; flex: none; }
 .switch input { position: absolute; opacity: 0; inset: 0; cursor: pointer; z-index: 1; }
 .switch span { position: absolute; inset: 0; border-radius: 26px; background: rgba(255, 255, 255, 0.12); transition: background .25s; }

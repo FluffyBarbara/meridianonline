@@ -22,9 +22,62 @@ const DEFAULT_KEY = 'ctrl-alt-end';
 // Процессы клиента: сама игра и загрузчик SA-MP/CR-MP (если ещё висит)
 const PROCESSES = ['gta_sa.exe', 'samp.exe'];
 
+// Сочетания, которые Windows не отдаёт программам или которые ломают систему
+const RESERVED = new Set(['Control+Alt+Delete', 'Control+Shift+Escape', 'Alt+Tab', 'Alt+Escape', 'Control+Escape', 'Super+L']);
+const MODS = ['Control', 'Alt', 'Shift', 'Super'];
+
+const KEY_NAMES = {
+  Control: 'Ctrl', Super: 'Win', Return: 'Enter', Escape: 'Esc', Backspace: 'Backspace',
+  PageUp: 'Page Up', PageDown: 'Page Down', Up: '↑', Down: '↓', Left: '←', Right: '→',
+  numadd: 'Num +', numsub: 'Num −', nummult: 'Num *', numdiv: 'Num /', numdec: 'Num .',
+  Plus: '+', Space: 'Пробел', Delete: 'Delete', Insert: 'Insert',
+};
+
+/** «Control+Alt+End» → «Ctrl + Alt + End» */
+function formatLabel(accel) {
+  return String(accel).split('+').map((k) => {
+    if (KEY_NAMES[k]) return KEY_NAMES[k];
+    const num = /^num(\d)$/.exec(k);
+    return num ? `Num ${num[1]}` : k;
+  }).join(' + ');
+}
+
+/** Приводит сочетание к виду «Модификаторы (в постоянном порядке) + клавиша». */
+function normalize(accel) {
+  const parts = String(accel || '').split('+').map((p) => p.trim()).filter(Boolean);
+  const mods = MODS.filter((m) => parts.includes(m));
+  const keys = parts.filter((p) => !MODS.includes(p));
+  if (keys.length !== 1) return null;
+  return [...mods, keys[0]].join('+');
+}
+
+/** Проверка своего сочетания до сохранения: формат, запреты и не занято ли оно другой программой. */
+function validate(accel, current) {
+  const a = normalize(accel);
+  if (!a) return { ok: false, error: 'Нужна одна клавиша вместе с Ctrl, Alt или Win' };
+  const label = formatLabel(a);
+  if (!/(^|\+)(Control|Alt|Super)\+/.test(a)) {
+    return { ok: false, label, error: 'Добавьте Ctrl, Alt или Win — одиночная клавиша мешала бы в игре и чате' };
+  }
+  if (RESERVED.has(a)) return { ok: false, label, error: `${label} — системное сочетание Windows, его нельзя занять` };
+  if (current && current.accel === a) return { ok: true, accel: a, label };
+  let ok = false;
+  try {
+    ok = globalShortcut.register(a, () => {});
+    if (ok) globalShortcut.unregister(a);
+  } catch {
+    return { ok: false, label, error: 'Эту клавишу нельзя назначить' };
+  }
+  if (!ok) return { ok: false, label, error: `${label} уже занято другой программой` };
+  return { ok: true, accel: a, label };
+}
+
 function preset(key) {
   if (key === 'off') return null;
-  return PRESETS[key] || PRESETS[DEFAULT_KEY];
+  if (PRESETS[key]) return PRESETS[key];
+  const a = normalize(key);
+  if (a && key !== DEFAULT_KEY) return { accel: a, label: formatLabel(a) };
+  return PRESETS[DEFAULT_KEY];
 }
 
 function taskkill(images) {
@@ -97,6 +150,11 @@ class KillSwitch {
     return this.current?.label || null;
   }
 
+  /** Проверка своего сочетания (см. validate). */
+  validate(accel) {
+    return validate(accel, this.current);
+  }
+
   /** Принудительно завершает игру. Повторные нажатия в течение 3 секунд игнорируются. */
   async trigger(source = 'hotkey') {
     const now = Date.now();
@@ -125,4 +183,4 @@ class KillSwitch {
   }
 }
 
-module.exports = { KillSwitch, PRESETS, DEFAULT_KEY };
+module.exports = { KillSwitch, PRESETS, DEFAULT_KEY, formatLabel, normalize, preset };

@@ -17,7 +17,10 @@ const DEFAULTS = {
   // Что делать с лаунчером после запуска игры: 'minimize' | 'hide' | 'close' | 'keep'
   afterLaunch: 'minimize',
   // Сочетание клавиш, закрывающее зависшую игру: 'ctrl-alt-end' | 'ctrl-shift-f12' | 'off'
+  // или своё сочетание в формате Electron Accelerator, например 'Control+Shift+K'
   killHotkey: 'ctrl-alt-end',
+  // Последнее включённое сочетание (чтобы вернуть его после «Выкл»)
+  killHotkeyLast: null,
   // Скачивать обновления игры автоматически при запуске лаунчера.
   autoUpdateGame: true,
   // Анимированный фон

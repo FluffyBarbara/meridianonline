@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld('meridian', {
     onKilled: on('game:killed'),
     onHotkey: on('game:hotkey'),
     kill: () => ipcRenderer.invoke('game:kill'),
+    validateHotkey: (accel) => ipcRenderer.invoke('hotkey:validate', accel),
     fix: (options) => ipcRenderer.invoke('game:fix', options),
   },
   prereqs: {

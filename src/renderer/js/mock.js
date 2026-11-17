@@ -53,6 +53,7 @@ const api = {
     onKilled: noop,
     onHotkey: (cb) => { if (scenario === 'running' || scenario === 'killed') setTimeout(() => cb({ ok: true, label: 'Ctrl + Alt + End' }), 300); return () => {}; },
     kill: async () => ({ ok: true }),
+    validateHotkey: async (accel) => (accel === 'Control+Alt+Delete' ? { ok: false, error: 'Ctrl + Alt + Delete — системное сочетание Windows, его нельзя занять' } : { ok: true, accel, label: accel.replace('Control', 'Ctrl').split('+').join(' + ') }),
     onExited: (cb) => { if (scenario === 'crash') setTimeout(() => cb({ seconds: 7 }), 800); if (scenario === 'killed') setTimeout(() => cb({ seconds: 40, killed: true }), 1500); return () => {}; },
     fix: async () => ({
       ok: true, needReinstall: false, damaged: 0, steps: [
