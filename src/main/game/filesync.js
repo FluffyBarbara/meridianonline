@@ -175,12 +175,18 @@ async function downloadFile(f, baseUrl, gameDir, signal, onBytes, resolver) {
   let triedListing = false;
   const part = `${target}.part`;
   await fsp.mkdir(path.dirname(target), { recursive: true });
+  // Сколько байт этого файла уже учтено в общем прогрессе. При повторной попытке
+  // (обрыв связи, неверный хеш) счётчик выравнивается по реальному размеру .part,
+  // иначе уже скачанная часть считалась бы дважды и прогресс уходил за 100%.
+  let counted = 0;
+  const count = (n) => { if (n) { counted += n; onBytes(n); } };
 
   for (let attempt = 0; ; attempt++) {
     try {
       let start = 0;
       try { start = (await fsp.stat(part)).size; } catch {}
       if (start > f.size) { await fsp.unlink(part).catch(() => {}); start = 0; }
+      count(start - counted);
 
       const hash = crypto.createHash('sha256');
       if (start > 0) {
@@ -188,7 +194,6 @@ async function downloadFile(f, baseUrl, gameDir, signal, onBytes, resolver) {
         await new Promise((resolve, reject) => {
           fs.createReadStream(part).on('data', (d) => hash.update(d)).on('error', reject).on('end', resolve);
         });
-        onBytes(start, true);
       }
 
       if (start < f.size || f.size === 0) {
@@ -211,7 +216,6 @@ async function downloadFile(f, baseUrl, gameDir, signal, onBytes, resolver) {
         if (start > 0 && res.status !== 206) {
           // сервер не умеет докачку — начинаем файл заново
           await fsp.unlink(part).catch(() => {});
-          onBytes(-start, true);
           continue;
         }
         const out = fs.createWriteStream(part, { flags: start > 0 ? 'a' : 'w' });
@@ -219,7 +223,8 @@ async function downloadFile(f, baseUrl, gameDir, signal, onBytes, resolver) {
           const body = Readable.fromWeb(res.body);
           body.on('data', (chunk) => {
             hash.update(chunk);
-            onBytes(chunk.length);
+            // сервер отдал больше, чем указано в манифесте — сверх размера файла не считаем
+            count(Math.max(0, Math.min(chunk.length, f.size - counted)));
             if (!out.write(chunk)) { body.pause(); out.once('drain', () => body.resume()); }
           });
           body.on('error', (err) => { out.destroy(); reject(err); });
@@ -271,12 +276,13 @@ async function sync(src, gameDir, report, signal, opts = {}) {
     last = now;
     samples.push([now, downloaded]);
     while (samples.length > 2 && now - samples[0][0] > 4000) samples.shift();
-    const speed = now > samples[0][0] ? ((downloaded - samples[0][1]) / (now - samples[0][0])) * 1000 : 0;
+    const speed = Math.max(0, now > samples[0][0] ? ((downloaded - samples[0][1]) / (now - samples[0][0])) * 1000 : 0);
+    const shown = Math.max(0, Math.min(downloaded, total));
     report('downloading', {
-      downloaded, total,
-      percent: total ? (downloaded / total) * 100 : 100,
-      speed, eta: speed > 0 ? (total - downloaded) / speed : null,
-      file, index: filesDone + 1, count: need.length, mode: 'files',
+      downloaded: shown, total,
+      percent: total ? Math.min(100, (shown / total) * 100) : 100,
+      speed, eta: speed > 0 ? (total - shown) / speed : null,
+      file, index: Math.min(filesDone + 1, need.length), count: need.length, mode: 'files',
     });
   };
 
