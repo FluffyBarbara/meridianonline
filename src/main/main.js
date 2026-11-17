@@ -552,6 +552,9 @@ function registerIpc() {
     return { ok: true };
   });
 
+  // Своё сочетание «закрыть зависшую игру»: проверка перед сохранением
+  ipcMain.handle('hotkey:validate', (_e, accel) => killSwitch.validate(accel));
+
   ipcMain.handle('game:kill', async () => {
     if (!gameRunning) return { ok: false, error: 'Игра не запущена' };
     await killSwitch.trigger('launcher');

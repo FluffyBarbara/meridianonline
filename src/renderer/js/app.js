@@ -1,6 +1,7 @@
 import { icon } from './icons.js';
 import { $, $$, esc, h, bytes, duration, date, toast, openModal, closeModal, confirmDialog } from './ui.js';
 import { initSnow, initParallax } from './fx.js';
+import { toAccel, formatAccel, readKeyEvent, PRESETS, DEFAULT_HOTKEY } from './hotkey.js';
 
 // В браузере (предпросмотр дизайна) подключаем заглушку API.
 const api = window.meridian ?? (await import('./mock.js')).default;
@@ -1087,11 +1088,10 @@ function openSettings() {
         <div class="set-row">
           <div class="set-row__text">
             <div class="set-row__label">Закрыть зависшую игру</div>
-            <div class="set-row__desc">Нажмите это сочетание прямо в игре — она закроется мгновенно, без диспетчера задач. Работает, пока лаунчер открыт или свёрнут в трей</div>
+            <div class="set-row__desc">Нажмите это сочетание прямо в игре — она закроется мгновенно, без диспетчера задач. Работает, пока лаунчер открыт или свёрнут в трей. Нажмите на клавиши, чтобы назначить свои</div>
+            <div class="hotkey-hint" id="hkHint" hidden></div>
           </div>
-          <div class="segmented" data-seg="killHotkey">
-            ${[['ctrl-alt-end', 'Ctrl+Alt+End'], ['ctrl-shift-f12', 'Ctrl+Shift+F12'], ['off', 'Выкл']].map(([v, l]) => `<button data-v="${v}" class="${(s.killHotkey || 'ctrl-alt-end') === v ? 'is-active' : ''}">${l}</button>`).join('')}
-          </div>
+          <div class="hotkey-ctl" id="hkCtl"></div>
         </div>
         <div class="set-row">
           <div class="set-row__text">
@@ -1161,6 +1161,7 @@ function openSettings() {
       seg.parentElement.querySelectorAll('button').forEach((x) => x.classList.toggle('is-active', x === seg));
     }
   });
+  initHotkeySetting(dlg);
   api.prereqs.check().then((list) => {
     const el = dlg.querySelector('#prereqStatus');
     if (!el) return;
@@ -1178,6 +1179,121 @@ function openSettings() {
     if (inp.dataset.set === 'animatedBackground') applyAnimation();
     if (inp.dataset.set === 'safeMode') renderStatus();
   });
+}
+
+// ═════════════════ Своё сочетание «закрыть зависшую игру» ═════════════════
+const keyChips = (accel) => formatAccel(accel).split(' + ').map((k) => `<kbd class="key">${esc(k)}</kbd>`).join('<i class="key-plus">+</i>');
+
+function initHotkeySetting(dlg) {
+  const ctl = dlg.querySelector('#hkCtl');
+  const hint = dlg.querySelector('#hkHint');
+  let recording = false;
+
+  const current = () => {
+    const s = state.settings;
+    const on = s.killHotkey !== 'off';
+    const value = on ? (s.killHotkey || DEFAULT_HOTKEY) : (s.killHotkeyLast || DEFAULT_HOTKEY);
+    return { on, value, accel: toAccel(value) };
+  };
+  const say = (text, type = 'info') => {
+    hint.hidden = !text;
+    hint.className = `hotkey-hint hotkey-hint--${type}`;
+    hint.innerHTML = text || '';
+  };
+
+  const render = () => {
+    const c = current();
+    const isDefault = c.accel === PRESETS[DEFAULT_HOTKEY];
+    ctl.innerHTML = `
+      ${!isDefault && c.on ? `<button class="hotkey-reset" data-hk="reset" title="Вернуть Ctrl + Alt + End">${icon('rotate-ccw')}</button>` : ''}
+      <button class="hotkey ${c.on ? '' : 'is-off'}" data-hk="record" title="Назначить свои клавиши" ${c.on ? '' : 'disabled'}>
+        <span class="hotkey__keys">${keyChips(c.accel)}</span>${icon('pencil')}
+      </button>
+      <label class="switch" title="Включить или выключить"><input type="checkbox" data-hk="toggle" ${c.on ? 'checked' : ''}><span></span></label>`;
+  };
+
+  const save = async (patch, message) => {
+    state.settings = await api.settings.set(patch);
+    render();
+    if (message) say(message, 'ok');
+  };
+
+  const stop = () => {
+    recording = false;
+    window.removeEventListener('keydown', onKey, true);
+    window.removeEventListener('keyup', onKeyUp, true);
+    ctl.querySelector('.hotkey')?.classList.remove('is-recording');
+  };
+
+  const showLive = (mods) => {
+    const keys = ctl.querySelector('.hotkey__keys');
+    if (!keys) return;
+    keys.innerHTML = mods.length
+      ? `${mods.map((m) => `<kbd class="key">${esc(formatAccel(m))}</kbd>`).join('<i class="key-plus">+</i>')}<i class="key-plus">+</i><span class="hotkey__wait">…</span>`
+      : '<span class="hotkey__wait">Нажмите клавиши…</span>';
+  };
+
+  async function onKey(e) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    const k = readKeyEvent(e);
+    if (e.code === 'Escape' && !k.mods.length) { stop(); render(); say(''); return; }
+    if (!k.key) {
+      if (k.unsupported) say('Эту клавишу нельзя назначить — выберите другую', 'error');
+      else showLive(k.mods);
+      return;
+    }
+    if (!k.mods.some((m) => m !== 'Shift')) {
+      showLive(k.mods);
+      say('Добавьте <b>Ctrl</b>, <b>Alt</b> или <b>Win</b> — одиночная клавиша мешала бы в игре и чате', 'error');
+      return;
+    }
+    stop();
+    const res = await api.game.validateHotkey(k.accel);
+    if (!res.ok) {
+      render();
+      say(esc(res.error), 'error');
+      return;
+    }
+    await save({ killHotkey: res.accel, killHotkeyLast: res.accel }, `Назначено: <b>${esc(res.label)}</b>`);
+  }
+  function onKeyUp(e) {
+    if (!recording) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    showLive(readKeyEvent(e).mods);
+  }
+
+  ctl.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-hk]');
+    if (!b) return;
+    if (b.dataset.hk === 'record') {
+      if (recording) { stop(); render(); say(''); return; }
+      recording = true;
+      b.classList.add('is-recording');
+      showLive([]);
+      say('Зажмите <b>Ctrl</b>, <b>Alt</b> или <b>Win</b> и нажмите клавишу. <b>Esc</b> — отмена', 'info');
+      window.addEventListener('keydown', onKey, true);
+      window.addEventListener('keyup', onKeyUp, true);
+    }
+    if (b.dataset.hk === 'reset') {
+      stop();
+      await save({ killHotkey: DEFAULT_HOTKEY, killHotkeyLast: null }, 'Возвращено: <b>Ctrl + Alt + End</b>');
+    }
+  });
+  ctl.addEventListener('change', async (e) => {
+    if (e.target.dataset.hk !== 'toggle') return;
+    stop();
+    const c = current();
+    if (e.target.checked) await save({ killHotkey: c.value }, '');
+    else await save({ killHotkey: 'off', killHotkeyLast: c.value }, '');
+    say('');
+  });
+  // Закрыли окно настроек во время записи — снимаем перехват клавиш
+  new MutationObserver((_m, obs) => { if (!dlg.isConnected || $('#modal').hidden) { stop(); obs.disconnect(); } })
+    .observe($('#modal'), { attributes: true, childList: true, subtree: true });
+
+  render();
 }
 
 // ═════════════════ Обновление лаунчера ═════════════════
