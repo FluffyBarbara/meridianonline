@@ -16,6 +16,8 @@ const DEFAULTS = {
   selectedServer: config.DEFAULT_SERVER.id,
   // Что делать с лаунчером после запуска игры: 'minimize' | 'hide' | 'close' | 'keep'
   afterLaunch: 'minimize',
+  // Сочетание клавиш, закрывающее зависшую игру: 'ctrl-alt-end' | 'ctrl-shift-f12' | 'off'
+  killHotkey: 'ctrl-alt-end',
   // Скачивать обновления игры автоматически при запуске лаунчера.
   autoUpdateGame: true,
   // Анимированный фон

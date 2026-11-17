@@ -210,7 +210,11 @@ function computeView() {
   }
 
   if (state.running) {
-    Object.assign(view, { title: 'Игра запущена', pct: '', bar: 100, info: `Сервер ${esc(selectedServer()?.name || '')}` });
+    const hk = state.hotkey?.ok && state.hotkey.label;
+    Object.assign(view, {
+      title: 'Игра запущена', pct: '', bar: 100,
+      info: `Сервер ${esc(selectedServer()?.name || '')}${hk ? ` · зависла? <b class="kbd">${esc(hk)}</b>` : ''}`,
+    });
     Object.assign(view.button, { label: 'Игра запущена', icon: 'gamepad-2', disabled: true, cls: 'is-running' });
     return view;
   }
@@ -559,7 +563,21 @@ function bindStatus() {
     state.running = running;
     renderStatus();
   });
-  api.game.onExited(({ seconds, neverStarted }) => {
+  api.game.onHotkey((hk) => {
+    state.hotkey = hk;
+    renderStatus();
+    if (hk && !hk.ok && !hk.off) {
+      toast({ title: `Сочетание ${hk.label} занято`, text: 'Его использует другая программа. Выберите другое в настройках → «Закрыть зависшую игру».', type: 'warn' });
+    }
+  });
+  api.game.onKilled((r) => {
+    if (!r.ok) toast({ title: 'Игра не закрылась', text: r.error, type: 'error' });
+  });
+  api.game.onExited(({ seconds, neverStarted, killed }) => {
+    if (killed) {
+      toast({ title: 'Зависшая игра закрыта', text: 'Можно запускать заново. Если игра зависает часто — попробуйте «Фикс игры».', type: 'success' });
+      return;
+    }
     if (!(neverStarted || seconds < 120)) return;
     if (state.gpu?.problem) showDriverHelp(state.gpu.problem);
     else showCrashHelp(neverStarted ? null : seconds);
@@ -1064,6 +1082,15 @@ function openSettings() {
           </div>
           <div class="segmented" data-seg="afterLaunch">
             ${after.map(([v, l]) => `<button data-v="${v}" class="${s.afterLaunch === v ? 'is-active' : ''}">${l}</button>`).join('')}
+          </div>
+        </div>
+        <div class="set-row">
+          <div class="set-row__text">
+            <div class="set-row__label">Закрыть зависшую игру</div>
+            <div class="set-row__desc">Нажмите это сочетание прямо в игре — она закроется мгновенно, без диспетчера задач. Работает, пока лаунчер открыт или свёрнут в трей</div>
+          </div>
+          <div class="segmented" data-seg="killHotkey">
+            ${[['ctrl-alt-end', 'Ctrl+Alt+End'], ['ctrl-shift-f12', 'Ctrl+Shift+F12'], ['off', 'Выкл']].map(([v, l]) => `<button data-v="${v}" class="${(s.killHotkey || 'ctrl-alt-end') === v ? 'is-active' : ''}">${l}</button>`).join('')}
           </div>
         </div>
         <div class="set-row">

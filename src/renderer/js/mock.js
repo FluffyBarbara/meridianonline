@@ -7,6 +7,7 @@ let settings = {
   gameDir: 'C:\\Games\\Meridian Online',
   selectedServer: 'white',
   afterLaunch: 'minimize',
+  killHotkey: 'ctrl-alt-end',
   autoUpdateGame: true,
   animatedBackground: true,
 };
@@ -48,8 +49,11 @@ const api = {
     openDir: async () => true,
     reinstall: async () => true,
     onProgress: (cb) => { progressCb = cb; return () => {}; },
-    onRunning: noop,
-    onExited: (cb) => { if (scenario === 'crash') setTimeout(() => cb({ seconds: 7 }), 800); return () => {}; },
+    onRunning: (cb) => { if (scenario === 'running' || scenario === 'killed') setTimeout(() => cb(true), 300); if (scenario === 'killed') setTimeout(() => cb(false), 1500); return () => {}; },
+    onKilled: noop,
+    onHotkey: (cb) => { if (scenario === 'running' || scenario === 'killed') setTimeout(() => cb({ ok: true, label: 'Ctrl + Alt + End' }), 300); return () => {}; },
+    kill: async () => ({ ok: true }),
+    onExited: (cb) => { if (scenario === 'crash') setTimeout(() => cb({ seconds: 7 }), 800); if (scenario === 'killed') setTimeout(() => cb({ seconds: 40, killed: true }), 1500); return () => {}; },
     fix: async () => ({
       ok: true, needReinstall: false, damaged: 0, steps: [
         { id: 'kill', title: 'Зависшие процессы', status: 'ok', text: 'Закрыто: gta_sa.exe' },
