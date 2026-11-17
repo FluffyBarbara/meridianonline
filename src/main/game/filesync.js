@@ -229,7 +229,8 @@ async function downloadFile(f, baseUrl, gameDir, signal, onBytes, resolver) {
       }
 
       const hex = hash.digest('hex');
-      if (f.sha256 && hex !== f.sha256) {
+      const lenient = isVolatile(f.path) || SOFT_EXT.test(f.path); // настройки могли поменять без обновления манифеста
+      if (f.sha256 && hex !== f.sha256 && !lenient) {
         await fsp.unlink(part).catch(() => {});
         throw new Error(`Файл ${f.path} скачался с ошибкой (не совпала контрольная сумма)`);
       }
@@ -286,7 +287,8 @@ async function sync(src, gameDir, report, signal, opts = {}) {
     listing = listing || fetchListing(src.baseUrl).catch(() => new Map());
     return (await listing).get(norm(rel).toLowerCase()) || null;
   };
-  let failed = null;
+  const failures = []; // { path, error }
+  let fatalStop = null; // остановка всей загрузки (нет места на диске и т.п.)
   let saveTimer = null;
   const saveSoon = () => {
     clearTimeout(saveTimer);
@@ -294,7 +296,7 @@ async function sync(src, gameDir, report, signal, opts = {}) {
   };
 
   const worker = async () => {
-    while (queue.length && !failed && !signal.aborted) {
+    while (queue.length && !fatalStop && !signal.aborted) {
       const f = queue.shift();
       try {
         const info = await downloadFile(f, src.baseUrl, gameDir, signal, (n) => { downloaded += n; emit(f.path); }, resolver);
@@ -302,7 +304,10 @@ async function sync(src, gameDir, report, signal, opts = {}) {
         filesDone++;
         saveSoon();
       } catch (err) {
-        failed = failed || err;
+        if (signal.aborted) break;
+        if (err.code === 'ENOSPC') { fatalStop = err; break; }
+        // Как в старом лаунчере: не обрываем установку из-за одного файла, качаем остальные
+        failures.push({ path: f.path, error: err.message });
       }
     }
   };
@@ -310,8 +315,14 @@ async function sync(src, gameDir, report, signal, opts = {}) {
   clearTimeout(saveTimer);
   state.version = remote.version;
   await writeState(gameDir, state).catch(() => {});
-  if (failed) throw failed;
   if (signal.aborted) { const e = new Error('aborted'); e.name = 'AbortError'; throw e; }
+  if (fatalStop) throw fatalStop;
+  if (failures.length) {
+    const list = failures.slice(0, 3).map((x) => x.path).join(', ');
+    const e = new Error(`Не удалось скачать файлов: ${failures.length} (${list}${failures.length > 3 ? '…' : ''}). Нажмите «Повторить» — докачаются только они.`);
+    e.failures = failures;
+    throw e;
+  }
 
   return { version: remote.version, downloadedFiles: need.length, downloadedBytes: total };
 }

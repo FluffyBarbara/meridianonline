@@ -307,6 +307,12 @@ function computeView() {
     return view;
   }
 
+  if (g.needsUpdate && g.incomplete) {
+    Object.assign(view, { title: 'Установка не завершена', bar: 0, pct: '', info: 'Докачаются только недостающие файлы' });
+    Object.assign(view.button, { label: 'Продолжить установку', icon: 'download', action: 'install', cls: 'is-update' });
+    return view;
+  }
+
   if (g.needsUpdate) {
     Object.assign(view, {
       title: `Доступно обновление ${esc(fmtVer(g.latestVersion))}`,
