@@ -23,6 +23,7 @@ const { PresenceEngine } = require('./game/presence');
 const cefpath = require('./game/cefpath');
 const filesync = require('./game/filesync');
 const { KillSwitch } = require('./game/killswitch');
+const sunset = require('./sunset');
 
 const DEV = process.argv.includes('--dev');
 const RENDERER = path.join(__dirname, '..', 'renderer');
@@ -100,6 +101,29 @@ function createSplash() {
   splash.loadFile(path.join(RENDERER, 'splash.html'));
   splash.once('ready-to-show', () => splash.show());
   splash.on('closed', () => { splash = null; });
+}
+
+function createSunset() {
+  win = new BrowserWindow({
+    width: 560,
+    height: 460,
+    frame: false,
+    resizable: false,
+    maximizable: false,
+    show: false,
+    center: true,
+    backgroundColor: '#0a0f1b',
+    icon: ICON,
+    title: config.APP_NAME,
+    webPreferences: baseWebPrefs(),
+  });
+  hardenContents(win.webContents);
+  win.loadFile(path.join(RENDERER, 'sunset.html'));
+  win.once('ready-to-show', () => {
+    win.show();
+    if (splash) setTimeout(() => splash?.close(), 150);
+  });
+  win.on('closed', () => { win = null; });
 }
 
 function createMain() {
@@ -454,6 +478,13 @@ function watchGame(manifest, server) {
 
 // ───────────────────────── IPC ─────────────────────────
 function registerIpc() {
+  ipcMain.handle('sunset:remove', async () => {
+    const r = await sunset.selfRemove();
+    // Даём деинсталлятору стартовать и выходим — он сам закроет лаунчер
+    setTimeout(() => app.quit(), r && r.ok ? 1500 : 60000);
+    return r;
+  });
+
   ipcMain.handle('app:info', () => ({
     version: app.getVersion(),
     packaged: app.isPackaged,
@@ -694,6 +725,12 @@ app.whenReady().then(async () => {
   // Если в прошлый раз лаунчер закрылся посреди безопасного запуска — возвращаем моды на место
   safeMode.restore(settings);
   createSplash();
+
+  // Проект закрыт: финальная версия лаунчера показывает экран закрытия и удаляет сама себя
+  if (sunset.isSunset()) {
+    createSunset();
+    return;
+  }
 
   // Пока проверяем обновление лаунчера — параллельно подтягиваем контент
   getContent();

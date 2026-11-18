@@ -92,8 +92,10 @@ async function copyDir(from, to, filter) {
   const R = 'src/renderer';
   await fsp.copyFile(path.join(ROOT, R, 'index.html'), path.join(OUT, R, 'index.html'));
   await fsp.copyFile(path.join(ROOT, R, 'splash.html'), path.join(OUT, R, 'splash.html'));
+  await fsp.copyFile(path.join(ROOT, R, 'sunset.html'), path.join(OUT, R, 'sunset.html'));
   await fsp.mkdir(path.join(OUT, R, 'js'), { recursive: true });
   await fsp.copyFile(path.join(ROOT, R, 'js/splash.js'), path.join(OUT, R, 'js/splash.js'));
+  await fsp.copyFile(path.join(ROOT, R, 'js/sunset.js'), path.join(OUT, R, 'js/sunset.js'));
   await copyDir(path.join(ROOT, R, 'css'), path.join(OUT, R, 'css'));
   await copyDir(path.join(ROOT, R, 'fonts'), path.join(OUT, R, 'fonts'));
   await copyDir(path.join(ROOT, R, 'assets'), path.join(OUT, R, 'assets'));
@@ -107,7 +109,7 @@ async function copyDir(from, to, filter) {
   await fsp.writeFile(path.join(OUT, 'package.json'), JSON.stringify(pkg, null, 2));
 
   console.log('▶ Обфускация');
-  for (const f of ['src/main/main.js', 'src/preload/preload.js', 'src/renderer/js/app.js', 'src/renderer/js/splash.js']) {
+  for (const f of ['src/main/main.js', 'src/preload/preload.js', 'src/renderer/js/app.js', 'src/renderer/js/splash.js', 'src/renderer/js/sunset.js']) {
     await obfuscateFile(path.join(OUT, f));
     process.stdout.write(`  ✔ ${f}\n`);
   }
