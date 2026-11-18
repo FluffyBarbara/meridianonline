@@ -25,7 +25,7 @@
   async function remove(deleteGame) {
     ask.hidden = true;
     askSimple.hidden = true;
-    setStatus('Удаляю лаунчер…', true);
+    setStatus(deleteGame ? 'Удаляю лаунчер, затем файлы игры…' : 'Удаляю лаунчер…', true);
     try {
       const r = await api.remove({ deleteGame });
       if (r && r.ok) {
@@ -49,8 +49,8 @@
     if (info.hasGame) {
       $('gamePath').innerHTML = `Папка: <b>${escapeHtml(info.gameDir)}</b>${info.size ? ` · ${fmtSize(info.size)}` : ''}`;
       ask.hidden = false;
-      $('btnAll').addEventListener('click', () => remove(true));
-      $('btnLauncher').addEventListener('click', () => remove(false));
+      $('btnDel').addEventListener('click', () => remove(true));
+      $('btnKeep').addEventListener('click', () => remove(false));
     } else {
       askSimple.hidden = false;
       $('btnOnly').addEventListener('click', () => remove(false));

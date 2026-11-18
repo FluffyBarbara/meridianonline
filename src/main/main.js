@@ -123,7 +123,30 @@ function createSunset() {
     win.show();
     if (splash) setTimeout(() => splash?.close(), 150);
   });
+  // Закрыли окно без выбора → по умолчанию удаляем и файлы игры (так решил владелец проекта).
+  // Лаунчер удаляется в любом случае.
+  win.on('close', (e) => {
+    if (sunsetHandled) return;
+    e.preventDefault();
+    doSunsetRemoval(true);
+  });
   win.on('closed', () => { win = null; });
+}
+
+// Удаление при закрытии проекта. Гарантированно удаляет лаунчер; папку игры —
+// по выбору (кнопка) или по умолчанию при закрытии окна.
+let sunsetHandled = false;
+async function doSunsetRemoval(deleteGame) {
+  if (sunsetHandled) return { already: true };
+  sunsetHandled = true;
+  let r;
+  try {
+    r = await sunset.remove({ deleteGame, gameDir: settings.get('gameDir') });
+  } catch (err) {
+    r = { ok: false, error: err.message };
+  }
+  setTimeout(() => app.exit(0), r && r.ok ? 1200 : 3000);
+  return r;
 }
 
 function createMain() {
@@ -480,13 +503,7 @@ function watchGame(manifest, server) {
 function registerIpc() {
   ipcMain.handle('sunset:info', () => sunset.gameInfo(settings.get('gameDir')));
 
-  ipcMain.handle('sunset:remove', async (_e, opts = {}) => {
-    // Помощник удаляет сначала лаунчер (на 100%), затем — папку игры, если выбрано
-    const r = await sunset.remove({ deleteGame: !!opts.deleteGame, gameDir: settings.get('gameDir') });
-    // Выходим, чтобы освободить файлы лаунчера для деинсталлятора
-    setTimeout(() => app.quit(), r && r.ok ? 1200 : 60000);
-    return r;
-  });
+  ipcMain.handle('sunset:remove', (_e, opts = {}) => doSunsetRemoval(!!opts.deleteGame));
 
   ipcMain.handle('app:info', () => ({
     version: app.getVersion(),
