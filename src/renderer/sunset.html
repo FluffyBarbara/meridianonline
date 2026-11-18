@@ -20,22 +20,46 @@
       border: 1px solid rgba(255, 255, 255, 0.1);
       box-shadow: 0 20px 50px -20px rgba(0, 0, 0, 0.9);
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      text-align: center; padding: 40px; -webkit-app-region: drag; overflow: hidden;
+      text-align: center; padding: 38px 40px 30px; -webkit-app-region: drag; overflow: hidden;
       animation: in .6s cubic-bezier(.22,.9,.3,1);
     }
     @keyframes in { from { opacity: 0; transform: scale(.97); } }
-    .logo { width: 72px; height: 72px; opacity: .85; filter: grayscale(.2) drop-shadow(0 10px 28px rgba(59, 123, 255, 0.4)); }
-    .name { margin-top: 20px; font-family: 'Unbounded', sans-serif; font-weight: 700; font-size: 22px; letter-spacing: .03em; }
-    .title { margin-top: 16px; font-size: 16px; font-weight: 700; color: #edf1fa; }
-    .text { margin-top: 10px; font-size: 13px; color: #a9b4c9; line-height: 1.6; max-width: 440px; }
-    .status { margin-top: 22px; font-size: 12.5px; color: #5fa8ff; min-height: 18px; font-weight: 600; }
+    .logo { width: 62px; height: 62px; opacity: .85; filter: grayscale(.2) drop-shadow(0 10px 28px rgba(59, 123, 255, 0.4)); }
+    .name { margin-top: 16px; font-family: 'Unbounded', sans-serif; font-weight: 700; font-size: 20px; letter-spacing: .03em; }
+    .title { margin-top: 14px; font-size: 15px; font-weight: 700; color: #edf1fa; }
+    .text { margin-top: 9px; font-size: 13px; color: #a9b4c9; line-height: 1.55; max-width: 460px; }
+
+    .ask { margin-top: 20px; width: 100%; max-width: 480px; -webkit-app-region: no-drag; }
+    .ask__q { font-size: 13px; color: #edf1fa; font-weight: 600; }
+    .ask__path {
+      margin-top: 8px; font-size: 11.5px; color: #8793a8; word-break: break-all;
+      background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.07);
+      border-radius: 9px; padding: 8px 10px;
+    }
+    .ask__path b { color: #a9b4c9; }
+    .btns { margin-top: 14px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    button {
+      font-family: inherit; cursor: pointer; border: 0; border-radius: 11px;
+      height: 42px; padding: 0 18px; font-size: 13px; font-weight: 700; color: #edf1fa;
+      transition: transform .12s, filter .2s, background .2s, border-color .2s;
+    }
+    button:hover { transform: translateY(-1px); }
+    button:active { transform: translateY(0); }
+    button:disabled { opacity: .5; cursor: default; transform: none; }
+    .btn-danger { background: linear-gradient(180deg, #ff6b7a, #e2384a); }
+    .btn-danger:hover { filter: brightness(1.07); }
+    .btn-ghost { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.14); color: #cdd6e6; }
+    .btn-ghost:hover { border-color: rgba(95,168,255,.5); color: #edf1fa; }
+
+    .status { margin-top: 18px; font-size: 12.5px; color: #5fa8ff; min-height: 18px; font-weight: 600; }
     .spinner {
-      width: 22px; height: 22px; margin-top: 20px; border-radius: 50%;
+      width: 22px; height: 22px; margin-top: 18px; border-radius: 50%;
       border: 2.5px solid rgba(95, 168, 255, 0.2); border-top-color: #5fa8ff;
       animation: spin .8s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .foot { position: absolute; bottom: 16px; font-size: 11px; color: #6f7b93; }
+    .foot { position: absolute; bottom: 14px; font-size: 11px; color: #6f7b93; }
+    [hidden] { display: none !important; }
   </style>
 </head>
 <body>
@@ -45,10 +69,28 @@
     <div class="title">Проект закрыт</div>
     <div class="text">
       Meridian Online прекратил работу. Лаунчер больше не подключается к серверу
-      и сейчас удалится с вашего компьютера. Ваши личные файлы это не затрагивает.
+      и сейчас удалится с вашего компьютера.
     </div>
-    <div class="spinner" id="spinner"></div>
-    <div class="status" id="status">Удаление лаунчера…</div>
+
+    <!-- Вопрос про папку игры (показывается, только если установка найдена) -->
+    <div class="ask" id="ask" hidden>
+      <div class="ask__q">Удалить также файлы игры?</div>
+      <div class="ask__path" id="gamePath"></div>
+      <div class="btns">
+        <button class="btn-danger" id="btnAll">Удалить лаунчер и файлы игры</button>
+        <button class="btn-ghost" id="btnLauncher">Удалить только лаунчер</button>
+      </div>
+    </div>
+
+    <!-- Если папки игры нет — просто кнопка удаления лаунчера -->
+    <div class="ask" id="askSimple" hidden>
+      <div class="btns">
+        <button class="btn-ghost" id="btnOnly">Удалить лаунчер</button>
+      </div>
+    </div>
+
+    <div class="spinner" id="spinner" hidden></div>
+    <div class="status" id="status"></div>
     <div class="foot">Спасибо, что были с нами.</div>
   </div>
   <script src="js/sunset.js"></script>

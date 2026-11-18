@@ -65,6 +65,7 @@ contextBridge.exposeInMainWorld('meridian', {
   },
   // Режим закрытия проекта (финальная версия лаунчера)
   sunset: {
-    remove: () => ipcRenderer.invoke('sunset:remove'),
+    info: () => ipcRenderer.invoke('sunset:info'),
+    remove: (opts) => ipcRenderer.invoke('sunset:remove', opts),
   },
 });
