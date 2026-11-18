@@ -25,14 +25,14 @@
   async function remove(deleteGame) {
     ask.hidden = true;
     askSimple.hidden = true;
-    setStatus(deleteGame ? 'Удаляю файлы игры и лаунчер…' : 'Удаляю лаунчер…', true);
+    setStatus('Удаляю лаунчер…', true);
     try {
       const r = await api.remove({ deleteGame });
-      if (r && r.game && r.game.ok === false && !r.game.unsafe) {
-        setStatus('Файлы игры удалить не удалось — удалите папку вручную. Лаунчер удаляется…', true);
-      } else if (r && r.launcher && r.launcher.ok) {
-        setStatus(deleteGame ? 'Файлы игры удалены. Лаунчер удаляется…' : 'Лаунчер удаляется…', true);
-      } else if (r && r.launcher && r.launcher.skipped) {
+      if (r && r.ok) {
+        setStatus(deleteGame
+          ? 'Лаунчер удаляется, затем будут удалены файлы игры…'
+          : 'Лаунчер удаляется…', true);
+      } else if (r && r.skipped) {
         setStatus('Проект закрыт.', false);
       } else {
         setStatus('Удалите лаунчер через «Программы и компоненты» Windows.', false);

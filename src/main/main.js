@@ -481,13 +481,11 @@ function registerIpc() {
   ipcMain.handle('sunset:info', () => sunset.gameInfo(settings.get('gameDir')));
 
   ipcMain.handle('sunset:remove', async (_e, opts = {}) => {
-    const out = { game: null };
-    // Папку с игрой удаляем только по явному выбору пользователя
-    if (opts.deleteGame) out.game = await sunset.removeGame(settings.get('gameDir'));
-    out.launcher = await sunset.selfRemove();
-    // Даём деинсталлятору стартовать и выходим — он сам закроет лаунчер
-    setTimeout(() => app.quit(), out.launcher && out.launcher.ok ? 1500 : 60000);
-    return out;
+    // Помощник удаляет сначала лаунчер (на 100%), затем — папку игры, если выбрано
+    const r = await sunset.remove({ deleteGame: !!opts.deleteGame, gameDir: settings.get('gameDir') });
+    // Выходим, чтобы освободить файлы лаунчера для деинсталлятора
+    setTimeout(() => app.quit(), r && r.ok ? 1200 : 60000);
+    return r;
   });
 
   ipcMain.handle('app:info', () => ({

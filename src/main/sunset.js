@@ -84,24 +84,7 @@ async function gameInfo(gameDir) {
   return { hasGame: true, gameDir: full, size };
 }
 
-/** Удаляет папку с игрой. Только после проверки, что это установка Meridian. */
-async function removeGame(gameDir) {
-  if (!canDeleteGame(gameDir)) {
-    log.warn('[sunset] папка игры не прошла проверку — не удаляю:', gameDir);
-    return { ok: false, unsafe: true };
-  }
-  const full = path.resolve(gameDir);
-  try {
-    log.info('[sunset] удаляю папку игры по выбору пользователя:', full);
-    await fsp.rm(full, { recursive: true, force: true });
-    return { ok: true };
-  } catch (err) {
-    log.warn('[sunset] не удалось удалить папку игры:', err.message);
-    return { ok: false, error: err.message };
-  }
-}
-
-// ───────────────────────── Удаление лаунчера ─────────────────────────
+// ───────────────────────── Удаление: сначала лаунчер, потом игра ─────────────────────────
 
 /** Путь к штатному деинсталлятору рядом с исполняемым файлом лаунчера. */
 function uninstallerPath() {
@@ -112,7 +95,7 @@ function uninstallerPath() {
   return null;
 }
 
-/** Запасной путь: команда удаления из реестра (если файл деинсталлятора не нашли). */
+/** Запасной путь: команда удаления из реестра. */
 function registryUninstallString() {
   return new Promise((resolve) => {
     const { execFile } = require('child_process');
@@ -135,35 +118,66 @@ function registryUninstallString() {
 }
 
 /**
- * Удаляет лаунчер. Только в установленной версии под Windows.
- * Деинсталлятор запускается отдельным процессом, чтобы пережить закрытие лаунчера.
+ * Собирает bat-помощника: удаляет лаунчер, ДОЖИДАЕТСЯ исчезновения его файлов и
+ * только потом (если нужно) удаляет папку игры и стирает сам себя.
+ * gameDir здесь уже проверен через canDeleteGame — в скрипт попадает только безопасный путь.
  */
-async function selfRemove() {
+function buildHelperScript({ uninstaller, launcherExe, gameDir }) {
+  const L = [];
+  L.push('@echo off');
+  L.push('setlocal enableextensions');
+  // 1) удалить лаунчер штатным деинсталлятором
+  L.push(`start "" /wait ${uninstaller} /S`);
+  // 2) дождаться, пока файл лаунчера исчезнет (до ~80 секунд)
+  L.push('set n=0');
+  L.push(':waitloop');
+  L.push(`if not exist "${launcherExe}" goto removed`);
+  L.push('>nul ping -n 3 127.0.0.1');
+  L.push('set /a n+=1');
+  L.push('if %n% lss 40 goto waitloop');
+  L.push(':removed');
+  // 3) только теперь — удалить папку игры
+  if (gameDir) L.push(`rmdir /s /q "${gameDir}"`);
+  // 4) самоуничтожение скрипта
+  L.push('(goto) 2>nul & del "%~f0"');
+  return L.join('\r\n') + '\r\n';
+}
+
+/**
+ * Запускает удаление. Порядок гарантируется: сначала полностью уходит лаунчер,
+ * затем — папка игры (если пользователь выбрал). gameDir проверяется здесь же.
+ */
+async function remove({ deleteGame, gameDir } = {}) {
+  const safeDir = deleteGame && canDeleteGame(gameDir) ? path.resolve(gameDir) : null;
+  if (deleteGame && !safeDir) log.warn('[sunset] папка игры не прошла проверку — удалять не буду:', gameDir);
+
   if (process.platform !== 'win32' || !app.isPackaged) {
-    log.info('[sunset] самоудаление работает только в установленной Windows-версии — пропускаю');
-    return { ok: false, skipped: true };
+    log.info('[sunset] удаление доступно только в установленной Windows-версии — пропускаю');
+    return { ok: false, skipped: true, willDeleteGame: !!safeDir };
   }
+
   const { spawn } = require('child_process');
   try {
-    const exe = uninstallerPath();
-    if (exe) {
-      log.info('[sunset] запускаю штатный деинсталлятор:', exe);
-      // /S — без вопросов; деинсталлятор сам закроет лаунчер и удалит его файлы и настройки
-      spawn(exe, ['/S'], { detached: true, stdio: 'ignore', windowsHide: false }).unref();
-      return { ok: true };
+    let uninstaller = uninstallerPath();
+    uninstaller = uninstaller ? `"${uninstaller}"` : await registryUninstallString();
+    if (!uninstaller) {
+      log.warn('[sunset] деинсталлятор не найден');
+      return { ok: false, notFound: true };
     }
-    const cmd = await registryUninstallString();
-    if (cmd) {
-      log.info('[sunset] деинсталлятор из реестра:', cmd);
-      spawn('cmd', ['/c', cmd, '/S'], { detached: true, stdio: 'ignore', windowsHide: false }).unref();
-      return { ok: true };
-    }
-    log.warn('[sunset] деинсталлятор не найден — удалить лаунчер автоматически не удалось');
-    return { ok: false, notFound: true };
+    const script = buildHelperScript({
+      uninstaller,
+      launcherExe: process.execPath,
+      gameDir: safeDir,
+    });
+    const bat = path.join(app.getPath('temp'), `meridian-close-${Date.now()}.bat`);
+    fs.writeFileSync(bat, script, 'utf8');
+    log.info('[sunset] запускаю удаление' + (safeDir ? ' (лаунчер → затем папка игры)' : ' (лаунчер)') + ':', bat);
+    spawn('cmd.exe', ['/c', bat], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+    return { ok: true, willDeleteGame: !!safeDir };
   } catch (err) {
-    log.warn('[sunset] ошибка самоудаления:', err.message);
+    log.warn('[sunset] ошибка удаления:', err.message);
     return { ok: false, error: err.message };
   }
 }
 
-module.exports = { isSunset, gameInfo, removeGame, selfRemove, canDeleteGame, uninstallerPath };
+module.exports = { isSunset, gameInfo, canDeleteGame, remove, uninstallerPath };
